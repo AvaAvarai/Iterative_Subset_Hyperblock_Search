@@ -25,16 +25,19 @@ import matplotlib.colors as mcolors
 
 def generate_color_palette(unique_classes):
     """Generate a color palette for the unique classes."""
-    base_colors = list(mcolors.TABLEAU_COLORS.values())
-    if len(unique_classes) <= len(base_colors):
-        colors = base_colors[:len(unique_classes)]
-    else:
-        # If more classes than base colors, generate additional colors
-        colors = list(mcolors.TABLEAU_COLORS.values())
-        additional_colors = plt.cm.rainbow(np.linspace(0, 1, len(unique_classes) - len(colors)))
-        colors.extend(additional_colors)
-    
-    return dict(zip(unique_classes, colors))
+    color_map = {}
+    for cls in unique_classes:
+        if cls.lower() == 'malignant':
+            color_map[cls] = 'red'
+        elif cls.lower() == 'benign':
+            color_map[cls] = 'green'
+        else:
+            # Use default color map for other classes
+            base_colors = list(mcolors.TABLEAU_COLORS.values())
+            remaining_classes = [c for c in unique_classes if c not in color_map]
+            remaining_colors = base_colors[:len(remaining_classes)]
+            color_map.update(dict(zip(remaining_classes, remaining_colors)))
+    return color_map
 
 def load_and_process_data(file_path, class_column=None):
     df = pd.read_csv(file_path)
@@ -60,18 +63,28 @@ def load_and_process_data(file_path, class_column=None):
 
     return df_normalized, class_column, color_palette
 
-def update_plot(frame, df, class_col, color_palette, ax, legend_handles):
+def update_plot(frame, df, class_col, color_palette, ax, legend_handles, visit_counts):
     ax.clear()
     
     # Select random 1/3 of data
     sample_df = df.sample(n=len(df) // 3, random_state=frame)
 
-    # Manually assign colors
-    color_series = sample_df[class_col].map(color_palette)
+    # Update visit counts - increment for visited points and decay others
+    visited_indices = sample_df.index
+    visit_counts[visited_indices] += 1
+    visit_counts[~visit_counts.index.isin(visited_indices)] *= 0.95  # Decay factor
     
-    # Plot each row manually
+    # Manually assign colors and line widths based on visit counts
+    color_series = sample_df[class_col].map(color_palette)
+    # Make lines thicker for more frequently visited points
+    line_widths = 1 + 4 * (visit_counts[sample_df.index] / visit_counts.max())
+    
+    # Plot each row manually with varying line width
     for i, row in sample_df.iterrows():
-        ax.plot(sample_df.columns[:-1], row[:-1], color=color_series[i], alpha=0.8)
+        ax.plot(sample_df.columns[:-1], row[:-1], 
+                color=color_series[i], 
+                alpha=0.8,
+                linewidth=line_widths[i])
     
     ax.set_title("Parallel Coordinates Plot (1/3 Random Sample)")
     ax.set_xticklabels(sample_df.columns[:-1], rotation=45)
@@ -87,6 +100,9 @@ def visualize_dataset(file_path, class_column=None, n_frames=100, interval=1000)
     fig, ax = plt.subplots(figsize=(10, 6))
     df, class_col, color_palette = load_and_process_data(file_path, class_column)
 
+    # Initialize visit counts for all data points
+    visit_counts = pd.Series(0.0, index=df.index)
+
     # Create legend handles (dynamic colors)
     import matplotlib.patches as mpatches
     legend_handles = [mpatches.Patch(color=color, label=cls) 
@@ -96,7 +112,7 @@ def visualize_dataset(file_path, class_column=None, n_frames=100, interval=1000)
         fig, 
         update_plot,
         frames=range(n_frames),  
-        fargs=(df, class_col, color_palette, ax, legend_handles),
+        fargs=(df, class_col, color_palette, ax, legend_handles, visit_counts),
         interval=interval  
     )
 
