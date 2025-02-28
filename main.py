@@ -120,4 +120,4 @@ def visualize_dataset(file_path, class_column=None, n_frames=100, interval=1000)
     plt.show()
 
 if __name__ == "__main__":
-    visualize_dataset("breast-cancer-wisconsin-diagnostic.csv")
+    visualize_dataset("fisher_iris.csv")
