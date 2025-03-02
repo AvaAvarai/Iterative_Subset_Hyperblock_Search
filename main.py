@@ -22,14 +22,16 @@ import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 from sklearn.preprocessing import MinMaxScaler
 import matplotlib.colors as mcolors
+from tkinter import filedialog
+from tkinter import *
 
 def generate_color_palette(unique_classes):
     """Generate a color palette for the unique classes."""
     color_map = {}
     for cls in unique_classes:
-        if cls.lower() == 'malignant':
+        if str(cls).lower() == 'malignant':
             color_map[cls] = 'red'
-        elif cls.lower() == 'benign':
+        elif str(cls).lower() == 'benign':
             color_map[cls] = 'green'
         else:
             # Use default color map for other classes
@@ -40,7 +42,11 @@ def generate_color_palette(unique_classes):
     return color_map
 
 def load_and_process_data(file_path, class_column=None):
-    df = pd.read_csv(file_path)
+    try:
+        df = pd.read_csv(file_path)
+    except FileNotFoundError:
+        print(f"File not found: {file_path}")
+        return None, None, None
     
     # If class column not specified, try to identify it
     if class_column is None:
@@ -87,6 +93,7 @@ def update_plot(frame, df, class_col, color_palette, ax, legend_handles, visit_c
                 linewidth=line_widths[i])
     
     ax.set_title("Parallel Coordinates Plot (1/3 Random Sample)")
+    ax.set_xticks(range(len(sample_df.columns[:-1])))  # Set fixed number of ticks
     ax.set_xticklabels(sample_df.columns[:-1], rotation=45)
     ax.set_ylim(0, 1)  # Set fixed y-limits since data is normalized
     ax.set_xlim(-0.5, len(sample_df.columns[:-1]) - 0.5)  # Set fixed x-limits
@@ -99,6 +106,10 @@ def visualize_dataset(file_path, class_column=None, n_frames=100, interval=1000)
     # Set up the figure and animation
     fig, ax = plt.subplots(figsize=(10, 6))
     df, class_col, color_palette = load_and_process_data(file_path, class_column)
+    
+    if df is None:
+        print("Data loading failed. Exiting.")
+        return
 
     # Initialize visit counts for all data points
     visit_counts = pd.Series(0.0, index=df.index)
@@ -119,5 +130,12 @@ def visualize_dataset(file_path, class_column=None, n_frames=100, interval=1000)
     plt.tight_layout()
     plt.show()
 
+def open_file_picker():
+    root = Tk()
+    root.withdraw()  # Hide the main window
+    file_path = filedialog.askopenfilename()
+    return file_path
+
 if __name__ == "__main__":
-    visualize_dataset("fisher_iris.csv")
+    file_path = open_file_picker()
+    visualize_dataset(file_path)
