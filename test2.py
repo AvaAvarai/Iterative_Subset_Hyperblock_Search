@@ -149,12 +149,15 @@ def main():
     for i, hb in enumerate(generator.hyperblocks, 1):
         print(f"\nHyperblock {i}:")
         print(f"Class: {hb.class_label}")
-        print(f"Cases Captured: {hb.num_cases}")
+        
+        # Get all cases covered by this hyperblock, regardless of class
+        covered_indices = generator._covered_indices(X_normalized, hb.min_bounds, hb.max_bounds)
+        print(f"Cases Captured: {len(covered_indices)}")
+        
         print(f"Min Bounds (normalized): {hb.min_bounds}")
         print(f"Max Bounds (normalized): {hb.max_bounds}")
         
         # Print all cases in this hyperblock
-        covered_indices = generator._covered_indices(X_normalized, hb.min_bounds, hb.max_bounds)
         print(f"Cases in this hyperblock:")
         for idx in covered_indices:
             print(f"  Case {idx}: {X[idx]} (normalized: {X_normalized[idx]}) - Class: {y[idx]}")
