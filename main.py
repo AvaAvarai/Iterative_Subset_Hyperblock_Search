@@ -1,5 +1,5 @@
 # This experiment visualizes datasets using an animated parallel coordinates plot.
-# The visualization randomly samples 1/3 of the data points in each frame, creating a dynamic view
+# The visualization randomly samples 1/k of the data points in each frame, creating a dynamic view
 # of the relationships between features. Each class is assigned a distinct color, and the features 
 # are normalized to a 0-1 scale for better comparison. The animation updates every second, showing 
 # different random samples to help identify patterns and relationships in the data across multiple views.
@@ -69,11 +69,11 @@ def load_and_process_data(file_path, class_column=None):
 
     return df_normalized, class_column, color_palette
 
-def update_plot(frame, df, class_col, color_palette, ax, legend_handles, visit_counts):
+def update_plot(frame, df, class_col, color_palette, ax, legend_handles, visit_counts, k):
     ax.clear()
     
-    # Select random 1/3 of data
-    sample_df = df.sample(n=len(df) // 3, random_state=frame)
+    # Select random 1/k of data
+    sample_df = df.sample(n=len(df) // k, random_state=frame)
 
     # Update visit counts - increment for visited points and decay others
     visited_indices = sample_df.index
@@ -92,19 +92,25 @@ def update_plot(frame, df, class_col, color_palette, ax, legend_handles, visit_c
                 alpha=0.8,
                 linewidth=line_widths[i])
     
-    ax.set_title("Parallel Coordinates Plot (1/3 Random Sample)")
+    ax.set_title(f"Parallel Coordinates Plot (1/{k} Random Sample)")
     ax.set_xticks(range(len(sample_df.columns[:-1])))  # Set fixed number of ticks
-    ax.set_xticklabels(sample_df.columns[:-1], rotation=45)
+    ax.set_xticklabels(sample_df.columns[:-1], rotation=45, fontsize=10)
     ax.set_ylim(0, 1)  # Set fixed y-limits since data is normalized
     ax.set_xlim(-0.5, len(sample_df.columns[:-1]) - 0.5)  # Set fixed x-limits
     ax.grid(True)
-
+    # space out to read labels
+    ax.tick_params(axis='x', which='major', pad=0)
+    # make more space for the labels
+    ax.set_xlabel('Features', fontsize=10)
+    ax.set_ylabel('Normalized Values', fontsize=10)
+    # Adjust top y margin to be smaller
+    ax.set_position([0.025, 0.15, 0.95, 0.825])  # [left, bottom, width, height]
     # Add legend
     ax.legend(handles=legend_handles, loc='upper right', title="Classes")
 
-def visualize_dataset(file_path, class_column=None, n_frames=100, interval=1000):
+def visualize_dataset(file_path, class_column=None, n_frames=100, interval=1000, k=3):
     # Set up the figure and animation
-    fig, ax = plt.subplots(figsize=(10, 6))
+    fig, ax = plt.subplots(figsize=(10, 4))
     df, class_col, color_palette = load_and_process_data(file_path, class_column)
     
     if df is None:
@@ -123,7 +129,7 @@ def visualize_dataset(file_path, class_column=None, n_frames=100, interval=1000)
         fig, 
         update_plot,
         frames=range(n_frames),  
-        fargs=(df, class_col, color_palette, ax, legend_handles, visit_counts),
+        fargs=(df, class_col, color_palette, ax, legend_handles, visit_counts, k),
         interval=interval  
     )
 
@@ -138,4 +144,5 @@ def open_file_picker():
 
 if __name__ == "__main__":
     file_path = open_file_picker()
-    visualize_dataset(file_path)
+    k = int(input("Enter the value of k: "))
+    visualize_dataset(file_path, k=k)
