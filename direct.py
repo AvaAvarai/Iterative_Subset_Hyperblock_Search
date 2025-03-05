@@ -5,6 +5,8 @@ from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
 import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
 import matplotlib.colors as mcolors
+import tkinter as tk
+from tkinter import filedialog
 
 class Hyperblock:
     def __init__(self, min_bounds, max_bounds, points, dominant_class):
@@ -509,8 +511,28 @@ def plot_parallel_coordinates(hyperblocks, df, class_col, title="Hyperblocks in 
     return fig, ax
 
 
+def select_file():
+    """
+    Open a file dialog to select a CSV file.
+    
+    :return: Path to the selected file
+    """
+    root = tk.Tk()
+    root.withdraw()  # Hide the main window
+    file_path = filedialog.askopenfilename(
+        title="Select CSV File",
+        filetypes=[("CSV files", "*.csv"), ("All files", "*.*")]
+    )
+    return file_path
+
+
 def main():
-    file_path = 'fisher_iris.csv'  # Replace with your CSV file
+    # Use file picker to select CSV file
+    file_path = select_file()
+    if not file_path:
+        print("No file selected. Exiting.")
+        return
+    
     df, class_col = load_data(file_path)
     attributes = [col for col in df.columns if col != class_col]
     
