@@ -25,11 +25,20 @@ Video of picking up completely randomly 1/3 subsets of the Fisher Iris training 
    python direct.py
    ```
 
-   - A file dialog will open to select your CSV dataset
+   - You'll be prompted to choose between generated Gaussian test data or loading from a file
+   - If you select option 1, the program will generate synthetic Gaussian data with two classes
+   - If you select option 2, a file dialog will open to select your CSV dataset
    - The program will analyze the data and generate hyperblocks using three algorithms: IHyper, MHyper, and IMHyper
    - Results will be displayed in the console and visualized in parallel coordinates
 
-4. For dataset splitting:
+4. Generating Gaussian test data:
+   - When you select option 1, the program will generate synthetic data with two classes
+   - By default, it creates 100 samples with 2 features
+   - Class 0 follows a Gaussian distribution with mean at origin and unit variance
+   - Class 1 follows a Gaussian distribution with mean at (3,3) and 1.5 variance
+   - The generated data will be visualized before hyperblock analysis
+
+5. For dataset splitting:
 
    ```bash
    python data_splitter.py
