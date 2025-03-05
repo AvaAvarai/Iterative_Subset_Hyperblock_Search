@@ -10,6 +10,9 @@ For each split, the script:
 2. Randomly divides the data using different random seeds for each split
 3. Saves the resulting train and test sets as CSV files
 
+By default, stratified sampling is used to maintain the same class distribution
+in both training and test sets.
+
 Usage:
     python data_splitter.py
 
@@ -28,7 +31,7 @@ import os
 from sklearn.model_selection import train_test_split
 from tkinter import Tk, filedialog
 
-def create_splits(data_path, num_splits=10):
+def create_splits(data_path, num_splits=10, stratified=True):
     # Create base output directory
     os.makedirs('splits', exist_ok=True)
     
@@ -41,7 +44,12 @@ def create_splits(data_path, num_splits=10):
         os.makedirs(split_dir, exist_ok=True)
         
         # Split into 1/3 train and 2/3 test
-        train, test = train_test_split(df, test_size=2/3, random_state=split_num)
+        if stratified:
+            # Assume the last column is the class label
+            y = df.iloc[:, -1]
+            train, test = train_test_split(df, test_size=2/3, random_state=split_num, stratify=y)
+        else:
+            train, test = train_test_split(df, test_size=2/3, random_state=split_num)
         
         # Save the splits
         train.to_csv(os.path.join(split_dir, 'train.csv'), index=False)
@@ -59,7 +67,7 @@ if __name__ == "__main__":
     )
     
     if data_path:
-        create_splits(data_path)
+        create_splits(data_path, stratified=True)
         print(f"Created 10 sets of 1/3 train - 2/3 test splits in the 'splits' directory for {os.path.basename(data_path)}")
     else:
         print("No file selected. Operation cancelled.")
