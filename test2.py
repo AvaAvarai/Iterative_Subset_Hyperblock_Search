@@ -3,6 +3,8 @@ import numpy as np
 from dataclasses import dataclass
 from typing import List
 import plotly.graph_objects as go
+import tkinter as tk
+from tkinter import filedialog
 
 @dataclass
 class Hyperblock:
@@ -171,8 +173,23 @@ def visualize_hyperblocks(generator, feature_names):
     
     fig.show()
 
+def select_dataset():
+    root = tk.Tk()
+    root.withdraw()  # Hide the main window
+    file_path = filedialog.askopenfilename(
+        title="Select Dataset",
+        filetypes=[("CSV files", "*.csv"), ("All files", "*.*")]
+    )
+    return file_path
+
 def main():
-    file_path = 'fisher_iris.csv'  # Update this path
+    # Use tkinter to select dataset
+    file_path = select_dataset()
+    if not file_path:
+        print("No file selected. Exiting.")
+        return
+    
+    print(f"Selected dataset: {file_path}")
     X, y, feature_names = load_dataset(file_path)
 
     generator = HyperblockGenerator(purity_threshold=100.0)
