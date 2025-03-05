@@ -30,6 +30,43 @@ def load_data(file_path):
     return df, class_column
 
 
+def generate_test_data(n_samples=100, n_features=2):
+    """
+    Generate test data with two Gaussian distributions.
+    
+    :param n_samples: Number of samples to generate
+    :param n_features: Number of features
+    :return: DataFrame with features and class labels
+    """
+    # Generate class 0 samples from first Gaussian
+    n_class0 = n_samples // 2
+    mean0 = np.zeros(n_features)
+    cov0 = np.eye(n_features)
+    X0 = np.random.multivariate_normal(mean0, cov0, n_class0)
+    y0 = np.zeros(n_class0)
+    
+    # Generate class 1 samples from second Gaussian
+    n_class1 = n_samples - n_class0
+    mean1 = np.ones(n_features) * 3
+    cov1 = np.eye(n_features) * 1.5
+    X1 = np.random.multivariate_normal(mean1, cov1, n_class1)
+    y1 = np.ones(n_class1)
+    
+    # Combine the data
+    X = np.vstack((X0, X1))
+    y = np.hstack((y0, y1))
+    
+    # Create feature names
+    feature_names = [f'feature_{i}' for i in range(n_features)]
+    
+    # Create DataFrame
+    data = np.column_stack((X, y))
+    df = pd.DataFrame(data, columns=feature_names + ['class'])
+    df['class'] = df['class'].astype(int)
+    
+    return df
+
+
 class IHyper:
     def __init__(self, data, labels, purity_threshold=0.9):
         """
@@ -526,14 +563,94 @@ def select_file():
     return file_path
 
 
-def main():
-    # Use file picker to select CSV file
-    file_path = select_file()
-    if not file_path:
-        print("No file selected. Exiting.")
-        return
+def plot_gaussian_data(df, class_col):
+    """
+    Plot the generated Gaussian data.
     
-    df, class_col = load_data(file_path)
+    :param df: DataFrame with features and class labels
+    :param class_col: Name of the class column
+    """
+    attributes = [col for col in df.columns if col != class_col]
+    
+    if len(attributes) == 2:
+        # For 2D data, create a scatter plot
+        fig, ax = plt.subplots(figsize=(10, 8))
+        
+        # Get unique classes for color mapping
+        unique_classes = df[class_col].unique()
+        class_colors = list(mcolors.TABLEAU_COLORS)[:len(unique_classes)]
+        
+        # Plot each class with a different color
+        for cls in unique_classes:
+            subset = df[df[class_col] == cls]
+            ax.scatter(subset[attributes[0]], subset[attributes[1]], 
+                      label=f'Class {cls}', alpha=0.7, 
+                      edgecolors='w', linewidth=0.5)
+        
+        ax.set_xlabel(attributes[0])
+        ax.set_ylabel(attributes[1])
+        ax.set_title('Gaussian Test Data')
+        ax.legend()
+        ax.grid(True, linestyle='--', alpha=0.7)
+        
+        plt.tight_layout()
+        plt.show()
+    else:
+        # For higher dimensions, use parallel coordinates
+        fig, ax = plt.subplots(figsize=(12, 8))
+        
+        # Get unique classes for color mapping
+        unique_classes = df[class_col].unique()
+        class_colors = list(mcolors.TABLEAU_COLORS)[:len(unique_classes)]
+        class_color_map = dict(zip(unique_classes, class_colors))
+        
+        # Plot each data point
+        for _, row in df.iterrows():
+            x = list(range(len(attributes)))
+            y = [row[attr] for attr in attributes]
+            ax.plot(x, y, color=class_color_map[row[class_col]], alpha=0.5)
+        
+        # Set the x-axis ticks and labels
+        ax.set_xticks(range(len(attributes)))
+        ax.set_xticklabels(attributes)
+        
+        # Create legend for classes
+        class_legend_elements = [Line2D([0], [0], color=color, lw=2, label=f'Class {cls}') 
+                               for cls, color in class_color_map.items()]
+        ax.legend(handles=class_legend_elements, title="Classes")
+        
+        ax.set_title('Gaussian Test Data (Parallel Coordinates)')
+        ax.grid(True, linestyle='--', alpha=0.7)
+        
+        plt.tight_layout()
+        plt.show()
+
+
+def main():
+    # Ask user if they want to use generated data or load from file
+    print("Do you want to use generated Gaussian test data or load from a file?")
+    print("1. Generate Gaussian test data")
+    print("2. Load from file")
+    choice = input("Enter your choice (1 or 2): ")
+    
+    if choice == '1':
+        # Generate test data with two Gaussian distributions
+        n_samples = int(input("Enter number of samples (default: 100): ") or "100")
+        n_features = int(input("Enter number of features (default: 2): ") or "2")
+        df = generate_test_data(n_samples, n_features)
+        class_col = 'class'
+        
+        # Plot the generated data
+        plot_gaussian_data(df, class_col)
+    else:
+        # Use file picker to select CSV file
+        file_path = select_file()
+        if not file_path:
+            print("No file selected. Exiting.")
+            return
+        
+        df, class_col = load_data(file_path)
+    
     attributes = [col for col in df.columns if col != class_col]
     
     print("IHyper Results:")
