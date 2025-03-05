@@ -11,21 +11,22 @@ For each split, the script:
 3. Saves the resulting train and test sets as CSV files
 
 Usage:
-    python test3.py
+    python data_splitter.py
 
-The script expects a CSV file named 'fisher_iris_2class.csv' in the current directory,
-but this can be modified by changing the 'data_path' variable.
+The script will open a file dialog to select the CSV file to split.
 
 Requirements:
     - pandas
     - numpy
     - scikit-learn
+    - tkinter (for file dialog)
 """
 
 import pandas as pd
 import numpy as np
 import os
 from sklearn.model_selection import train_test_split
+from tkinter import Tk, filedialog
 
 def create_splits(data_path, num_splits=10):
     # Create base output directory
@@ -47,6 +48,18 @@ def create_splits(data_path, num_splits=10):
         test.to_csv(os.path.join(split_dir, 'test.csv'), index=False)
 
 if __name__ == "__main__":
-    data_path = "fisher_iris_2class.csv"  # Update with your dataset path
-    create_splits(data_path)
-    print("Created 10 sets of 1/3 train - 2/3 test splits in the 'splits' directory")
+    # Initialize Tkinter and hide the main window
+    root = Tk()
+    root.withdraw()
+    
+    # Open file dialog to select the CSV file
+    data_path = filedialog.askopenfilename(
+        title="Select CSV file to split",
+        filetypes=[("CSV files", "*.csv"), ("All files", "*.*")]
+    )
+    
+    if data_path:
+        create_splits(data_path)
+        print(f"Created 10 sets of 1/3 train - 2/3 test splits in the 'splits' directory for {os.path.basename(data_path)}")
+    else:
+        print("No file selected. Operation cancelled.")
