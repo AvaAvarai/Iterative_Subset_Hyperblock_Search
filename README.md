@@ -6,56 +6,46 @@ Video of picking up completely randomly 1/3 subsets of the Fisher Iris training 
 
 ## How to use
 
-1. Install the required packages:
+1. Clone the repository:
 
    ```bash
-   pip install -r requirements.txt
+   git clone https://github.com/yourusername/Iterative_Subset_Hyperblock_Search.git
+   cd Iterative_Subset_Hyperblock_Search
    ```
 
-   Or install packages individually:
+2. Install the required dependencies:
 
    ```bash
-   pip install pandas numpy matplotlib scikit-learn
+   pip install pandas numpy matplotlib scikit-learn tabulate
    ```
 
-2. Prepare your dataset:
-   - The data should be in CSV format
-   - One column should contain the class labels (by default, looks for a column named "class" or uses the last column)
-   - All other columns should be numeric features
-   - Example datasets: breast cancer wisconsin diagnostic dataset, iris dataset
-
-3. Run the visualization:
+3. Run the main script:
 
    ```bash
-   python main.py
+   python direct.py
    ```
 
-   By default, it looks for "fisher_iris.csv" in the current directory.
+   - A file dialog will open to select your CSV dataset
+   - The program will analyze the data and generate hyperblocks using three algorithms: IHyper, MHyper, and IMHyper
+   - Results will be displayed in the console and visualized in parallel coordinates
 
-4. Custom dataset visualization:
+4. For dataset splitting:
 
-   ```python
-   from main import visualize_dataset
-   
-   # Basic usage with default parameters
-   visualize_dataset("your_dataset.csv")
-   
-   # Advanced usage with custom parameters
-   visualize_dataset(
-       file_path="your_dataset.csv",
-       class_column="your_class_column",  # Specify the class column name
-       n_frames=200,                      # Number of animation frames
-       interval=500                       # Milliseconds between frames
-   )
+   ```bash
+   python data_splitter.py
    ```
 
-5. Interpreting the visualization:
-   - Each line represents a data point
-   - Features are shown as vertical axes
-   - Colors indicate different classes
-   - Line thickness increases for frequently sampled points
-   - Each frame shows a random 1/3 of the dataset
-   - The animation updates every second by default
+   - This utility will help you create multiple train-test splits for cross-validation
+   - By default, it creates 10 splits with 1/3 training and 2/3 testing data
+   - Stratified sampling is used to maintain class distribution
+
+## Dataset Preparation
+
+Prepare your dataset with the following guidelines:
+
+- The data should be in .CSV format
+- One column should contain the class labels (by default, looks for a column named "class" case-insensitive or fallsback to using the last column)
+- All other columns should be numeric features i.e. attributes
 
 ## References
 
@@ -63,7 +53,7 @@ This project is working with algorithms available in:
 
 [1] Kovalerchuk B, Hayes D. Discovering interpretable machine learning models in parallel coordinates. In 2021 25th International conference information visualisation (IV) 2021 Jul 5 (pp. 181-188). IEEE.  
 [2] Huber L, Kovalerchuk B, Recaido C. Visual knowledge discovery with general line coordinates. In Artificial Intelligence and Visualization: Advancing Visual Knowledge Discovery 2024 Apr 25 (pp. 159-202). Cham: Springer Nature Switzerland.  
-[3] Huber, Lincoln, "Human-Centered Machine Learning with Interpretable Visual Knowledge Discovery" (2024). All Master's Theses. 1991.  
+[3] Huber, Lincoln, "Human-Centered Machine Learning with Interpretable Visual Knowledge Discovery" (2024). All Master's Theses.  
 
 ## License
 
