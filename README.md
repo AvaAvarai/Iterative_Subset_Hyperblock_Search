@@ -57,6 +57,14 @@ Video of picking up completely randomly 1/3 subsets of the Fisher Iris training 
    - Each frame shows a random 1/3 of the dataset
    - The animation updates every second by default
 
+## References
+
+This project is working with algorithms available in:
+
+[1] Kovalerchuk B, Hayes D. Discovering interpretable machine learning models in parallel coordinates. In 2021 25th International conference information visualisation (IV) 2021 Jul 5 (pp. 181-188). IEEE.  
+[2] Huber L, Kovalerchuk B, Recaido C. Visual knowledge discovery with general line coordinates. In Artificial Intelligence and Visualization: Advancing Visual Knowledge Discovery 2024 Apr 25 (pp. 159-202). Cham: Springer Nature Switzerland.  
+[3] Huber, Lincoln, "Human-Centered Machine Learning with Interpretable Visual Knowledge Discovery" (2024). All Master's Theses. 1991.  
+
 ## License
 
 This project is licensed for free and commercial use under the MIT License. See the [LICENSE](LICENSE) file for details.
