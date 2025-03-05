@@ -2,6 +2,7 @@ import pandas as pd
 import numpy as np
 from dataclasses import dataclass
 from typing import List
+import plotly.graph_objects as go
 
 @dataclass
 class Hyperblock:
@@ -120,11 +121,59 @@ def load_dataset(file_path: str):
 
     X = df.drop(columns=[class_col]).to_numpy()
     y = df[class_col].to_numpy()
-    return X, y
+    return X, y, df.drop(columns=[class_col]).columns
+
+def visualize_hyperblocks(generator, feature_names):
+    fig = go.Figure()
+    
+    # Add each hyperblock as a pair of lines representing min and max bounds
+    colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd']  # Add more colors if needed
+    for i, hb in enumerate(generator.hyperblocks):
+        color = colors[i % len(colors)]
+        
+        # Add line for minimum bounds
+        fig.add_trace(go.Scattergl(
+            x=feature_names,
+            y=hb.min_bounds,
+            mode='lines+markers',
+            name=f'HB {i+1} ({hb.class_label}) - Min',
+            line=dict(color=color, dash='solid'),
+            showlegend=True
+        ))
+        
+        # Add line for maximum bounds
+        fig.add_trace(go.Scattergl(
+            x=feature_names,
+            y=hb.max_bounds,
+            mode='lines+markers',
+            name=f'HB {i+1} ({hb.class_label}) - Max',
+            line=dict(color=color, dash='dash'),
+            showlegend=True
+        ))
+        
+        # Fill the area between min and max bounds
+        fig.add_trace(go.Scattergl(
+            x=feature_names.tolist() + feature_names.tolist()[::-1],
+            y=np.concatenate([hb.min_bounds, hb.max_bounds[::-1]]),
+            fill='toself',
+            fillcolor=f'rgba{tuple(list(int(color.lstrip("#")[i:i+2], 16) for i in (0, 2, 4)) + [0.2])}',
+            line=dict(color='rgba(255,255,255,0)'),
+            showlegend=False,
+            name=f'HB {i+1} ({hb.class_label}) - Area'
+        ))
+
+    fig.update_layout(
+        title='Hyperblocks Visualization (Parallel Coordinates)',
+        xaxis_title='Features',
+        yaxis_title='Normalized Values',
+        showlegend=True
+    )
+    
+    fig.show()
 
 def main():
-    file_path = 'fisher_iris_2class.csv'  # Update this path
-    X, y = load_dataset(file_path)
+    file_path = 'fisher_iris.csv'  # Update this path
+    X, y, feature_names = load_dataset(file_path)
 
     generator = HyperblockGenerator(purity_threshold=100.0)
     generator.fit(X, y)
@@ -161,6 +210,9 @@ def main():
         print(f"Cases in this hyperblock:")
         for idx in covered_indices:
             print(f"  Case {idx}: {X[idx]} (normalized: {X_normalized[idx]}) - Class: {y[idx]}")
+            
+    # Visualize the hyperblocks
+    visualize_hyperblocks(generator, feature_names)
 
 if __name__ == "__main__":
     main()
