@@ -2,6 +2,9 @@ import pandas as pd
 import numpy as np
 from tabulate import tabulate
 from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
+import matplotlib.pyplot as plt
+from matplotlib.lines import Line2D
+import matplotlib.colors as mcolors
 
 class Hyperblock:
     def __init__(self, min_bounds, max_bounds, points, dominant_class):
@@ -353,6 +356,159 @@ def imhyper(df, class_col, purity_threshold=1.0, impurity_threshold=0.1):
         return ihyper_blocks
 
 
+def plot_hyperblock(hyperblock, df, class_col, block_num, title=None):
+    """
+    Plot a single hyperblock using parallel coordinates.
+    
+    :param hyperblock: A single Hyperblock object
+    :param df: Original DataFrame
+    :param class_col: Name of the class column
+    :param block_num: Number of the hyperblock (for title)
+    :param title: Optional title override
+    :return: Figure and axis objects
+    """
+    attributes = [col for col in df.columns if col != class_col]
+    n_attrs = len(attributes)
+    
+    # Create figure and axis
+    fig, ax = plt.subplots(figsize=(10, 6))
+    
+    # Set up the axes
+    x = list(range(n_attrs))
+    
+    # Get unique classes for color mapping
+    unique_classes = df[class_col].unique()
+    class_colors = list(mcolors.TABLEAU_COLORS)[:len(unique_classes)]
+    class_color_map = dict(zip(unique_classes, class_colors))
+    
+    # Get color for this hyperblock
+    block_color = plt.cm.tab20(block_num / 20)  # Use a color from tab20 colormap
+    class_color = class_color_map[hyperblock.dominant_class]
+    
+    # Plot the min-max bounds as a shaded region
+    for j in range(n_attrs-1):
+        # Get min and max values for current and next attribute
+        y1_min = hyperblock.min_bounds[attributes[j]]
+        y1_max = hyperblock.max_bounds[attributes[j]]
+        y2_min = hyperblock.min_bounds[attributes[j+1]]
+        y2_max = hyperblock.max_bounds[attributes[j+1]]
+        
+        # Create polygon vertices for the shaded region
+        xs = [x[j], x[j], x[j+1], x[j+1]]
+        ys = [y1_min, y1_max, y2_max, y2_min]
+        
+        # Plot the polygon
+        ax.fill(xs, ys, alpha=0.3, color=block_color, edgecolor=block_color, 
+               linewidth=1, label="Hyperblock Region" if j == 0 else None)
+    
+    # Plot the points in this hyperblock
+    for point in hyperblock.points:
+        point_values = point[:-1]  # Feature values
+        point_class = point[-1]    # Class value
+        
+        # Plot the line connecting the points
+        ax.plot(x, point_values, color=class_color_map[point_class], alpha=0.7, linewidth=0.8,
+               label=f"Class {point_class}" if point_class not in ax.get_legend_handles_labels()[1] else None)
+    
+    # Set the x-axis ticks and labels
+    ax.set_xticks(x)
+    ax.set_xticklabels(attributes)
+    
+    # Add legend
+    handles, labels = ax.get_legend_handles_labels()
+    by_label = dict(zip(labels, handles))
+    ax.legend(by_label.values(), by_label.keys(), loc='upper right')
+    
+    # Set title and labels
+    if title is None:
+        title = f"Hyperblock #{block_num+1} (Dominant Class: {hyperblock.dominant_class})"
+    ax.set_title(title)
+    ax.grid(True, linestyle='--', alpha=0.7)
+    
+    plt.tight_layout()
+    return fig, ax
+
+
+def plot_parallel_coordinates(hyperblocks, df, class_col, title="Hyperblocks in Parallel Coordinates"):
+    """
+    Plot all hyperblocks together using parallel coordinates.
+    
+    :param hyperblocks: List of Hyperblock objects
+    :param df: Original DataFrame
+    :param class_col: Name of the class column
+    :param title: Title for the plot
+    """
+    attributes = [col for col in df.columns if col != class_col]
+    n_attrs = len(attributes)
+    
+    # Create figure and axis
+    fig, ax = plt.subplots(figsize=(12, 8))
+    
+    # Set up the axes
+    x = list(range(n_attrs))
+    
+    # Get unique classes for color mapping
+    unique_classes = df[class_col].unique()
+    class_colors = list(mcolors.TABLEAU_COLORS)[:len(unique_classes)]
+    class_color_map = dict(zip(unique_classes, class_colors))
+    
+    # Generate distinct colors for each hyperblock
+    block_colors = plt.cm.tab20(np.linspace(0, 1, len(hyperblocks)))
+    
+    # Plot each hyperblock as a distinct shaded region
+    for i, hb in enumerate(hyperblocks):
+        # Get the color for this hyperblock
+        block_color = block_colors[i]
+        class_color = class_color_map[hb.dominant_class]
+        
+        # Plot the min-max bounds as a shaded region
+        for j in range(n_attrs-1):
+            # Get min and max values for current and next attribute
+            y1_min = hb.min_bounds[attributes[j]]
+            y1_max = hb.max_bounds[attributes[j]]
+            y2_min = hb.min_bounds[attributes[j+1]]
+            y2_max = hb.max_bounds[attributes[j+1]]
+            
+            # Create polygon vertices for the shaded region
+            xs = [x[j], x[j], x[j+1], x[j+1]]
+            ys = [y1_min, y1_max, y2_max, y2_min]
+            
+            # Plot the polygon with distinct color and label for the first segment only
+            label = f"Block {i+1} ({hb.dominant_class})" if j == 0 else None
+            ax.fill(xs, ys, alpha=0.3, color=block_color, edgecolor=block_color, 
+                   linewidth=1, label=label)
+        
+        # Plot the points in this hyperblock
+        for point in hb.points:
+            point_values = point[:-1]  # Feature values
+            point_class = point[-1]    # Class value
+            
+            # Plot the line connecting the points
+            ax.plot(x, point_values, color=class_color_map[point_class], alpha=0.5, linewidth=0.5)
+    
+    # Set the x-axis ticks and labels
+    ax.set_xticks(x)
+    ax.set_xticklabels(attributes)
+    
+    # Create legend for classes
+    class_legend_elements = [Line2D([0], [0], color=color, lw=2, label=class_name) 
+                           for class_name, color in class_color_map.items()]
+    
+    # Add both legends
+    ax.legend(title="Hyperblocks", loc='upper left')
+    
+    # Add a second legend for classes
+    second_legend = ax.legend(handles=class_legend_elements, title="Classes", loc='upper right')
+    ax.add_artist(second_legend)
+    
+    # Set title and labels
+    ax.set_title(title)
+    ax.grid(True, linestyle='--', alpha=0.7)
+    
+    plt.tight_layout()
+    return fig, ax
+
+
 def main():
     file_path = 'fisher_iris.csv'  # Replace with your CSV file
     df, class_col = load_data(file_path)
@@ -411,6 +567,15 @@ def main():
             case_class = point[-1]    # Class value
             case_data.append([*case_values, case_class])
         print(tabulate(case_data, headers=attributes + [class_col], tablefmt='grid'))
+    
+    # Plot all hyperblocks together
+    fig, ax = plot_parallel_coordinates(imh_blocks, df, class_col, "IMHyper Blocks in Parallel Coordinates")
+    plt.show()
+    
+    # Plot each hyperblock individually
+    for i, hb in enumerate(imh_blocks):
+        fig, ax = plot_hyperblock(hb, df, class_col, i)
+        plt.show()
 
 if __name__ == "__main__":
     main()
