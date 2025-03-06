@@ -650,7 +650,7 @@ def plot_gaussian_data(df, class_col):
         plt.show()
 
 
-def save_tabulation_to_file(data, headers, filename, mode='w'):
+def save_tabulation_to_file(data, headers, filename, mode='w', algorithm_name=None):
     """
     Save tabulation results to a file.
     
@@ -658,10 +658,16 @@ def save_tabulation_to_file(data, headers, filename, mode='w'):
     :param headers: List of headers for the table
     :param filename: Name of the file to save to
     :param mode: File mode ('w' for write, 'a' for append)
+    :param algorithm_name: Name of the algorithm to include in the output
     """
     with open(filename, mode) as f:
         if mode == 'w':
             f.write("=" * 80 + "\n\n")  # Top border
+        
+        # Always print algorithm name if provided, regardless of mode
+        if algorithm_name is not None:
+            f.write(f"\nAlgorithm: {algorithm_name}\n\n")
+            
         f.write(tabulate(data, headers=headers, tablefmt='grid'))
         f.write("\n" + "=" * 80 + "\n\n")  # Bottom border and spacing
 
@@ -714,7 +720,7 @@ def main():
     
     # Save IHyper results
     save_tabulation_to_file(ih_data, ['Block #', 'Class', 'Cases', 'Misclassified'] + attributes,
-                          results_file, mode='w')
+                          results_file, mode='w', algorithm_name="IHyper")
     
     # Save individual IHyper block cases
     for i, hb in enumerate(ih_blocks):
@@ -724,7 +730,7 @@ def main():
             case_class = point[-1]    # Class value
             case_data.append([*case_values, case_class])
         save_tabulation_to_file(case_data, attributes + [class_col],
-                              results_file, mode='a')
+                              results_file, mode='a', algorithm_name="IHyper")
     
     print("Processing MHyper...")
     mh_blocks = mhyper(df, class_col)
@@ -734,7 +740,7 @@ def main():
     
     # Save MHyper results
     save_tabulation_to_file(mh_data, ['Block #', 'Class', 'Cases', 'Misclassified'] + attributes,
-                          results_file, mode='a')
+                          results_file, mode='a', algorithm_name="MHyper")
     
     # Save individual MHyper block cases
     for i, hb in enumerate(mh_blocks):
@@ -744,7 +750,7 @@ def main():
             case_class = point[-1]    # Class value
             case_data.append([*case_values, case_class])
         save_tabulation_to_file(case_data, attributes + [class_col],
-                              results_file, mode='a')
+                              results_file, mode='a', algorithm_name="MHyper")
     
     print("Processing IMHyper...")
     imh_blocks = imhyper(df, class_col)
@@ -754,7 +760,7 @@ def main():
     
     # Save IMHyper results
     save_tabulation_to_file(imh_data, ['Block #', 'Class', 'Cases', 'Misclassified'] + attributes,
-                          results_file, mode='a')
+                          results_file, mode='a', algorithm_name="IMHyper")
     
     # Save individual IMHyper block cases
     for i, hb in enumerate(imh_blocks):
@@ -764,7 +770,7 @@ def main():
             case_class = point[-1]    # Class value
             case_data.append([*case_values, case_class])
         save_tabulation_to_file(case_data, attributes + [class_col],
-                              results_file, mode='a')
+                              results_file, mode='a', algorithm_name="IMHyper")
     
     print(f"\nResults have been saved to '{results_file}'")
     
