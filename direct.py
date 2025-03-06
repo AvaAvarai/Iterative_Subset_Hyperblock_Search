@@ -7,6 +7,8 @@ from matplotlib.lines import Line2D
 import matplotlib.colors as mcolors
 import tkinter as tk
 from tkinter import filedialog
+import os
+import datetime
 
 class Hyperblock:
     def __init__(self, min_bounds, max_bounds, points, dominant_class):
@@ -640,6 +642,22 @@ def plot_gaussian_data(df, class_col):
         plt.show()
 
 
+def save_tabulation_to_file(data, headers, filename, mode='w'):
+    """
+    Save tabulation results to a file.
+    
+    :param data: List of lists containing the data to tabulate
+    :param headers: List of headers for the table
+    :param filename: Name of the file to save to
+    :param mode: File mode ('w' for write, 'a' for append)
+    """
+    with open(filename, mode) as f:
+        if mode == 'w':
+            f.write("=" * 80 + "\n\n")  # Top border
+        f.write(tabulate(data, headers=headers, tablefmt='grid'))
+        f.write("\n" + "=" * 80 + "\n\n")  # Bottom border and spacing
+
+
 def main():
     # Ask user if they want to use generated data or load from file
     print("Do you want to use generated Gaussian test data or load from a file?")
@@ -647,12 +665,16 @@ def main():
     print("2. Load from file")
     choice = input("Enter your choice (1 or 2): ")
     
+    # Get timestamp for filename
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    
     if choice == '1':
         # Generate test data with two Gaussian distributions
         n_samples = int(input("Enter number of samples (default: 100): ") or "100")
         n_features = int(input("Enter number of features (default: 2): ") or "2")
         df = generate_test_data(n_samples, n_features)
         class_col = 'class'
+        dataset_name = f"gaussian_{n_samples}samples_{n_features}features"
         
         # Plot the generated data
         plot_gaussian_data(df, class_col)
@@ -664,62 +686,79 @@ def main():
             return
         
         df, class_col = load_data(file_path)
+        # Get dataset name from file path
+        dataset_name = os.path.splitext(os.path.basename(file_path))[0]
     
     attributes = [col for col in df.columns if col != class_col]
     
-    print("IHyper Results:")
+    # Create output directory if it doesn't exist
+    output_dir = "tabulation_results"
+    os.makedirs(output_dir, exist_ok=True)
+    
+    # Create the main results file
+    results_file = os.path.join(output_dir, f"{dataset_name}_results_{timestamp}.txt")
+    
+    print("Processing IHyper...")
     ih_blocks = ihyper(df, class_col)
     ih_data = [[i+1, hb.dominant_class, hb.num_cases, hb.num_misclassified] + 
                [f"{hb.min_bounds[a]:.1f}-{hb.max_bounds[a]:.1f}" for a in attributes]
                for i, hb in enumerate(ih_blocks)]
-    print(tabulate(ih_data, headers=['Block #', 'Class', 'Cases', 'Misclassified'] + attributes, 
-                  tablefmt='grid'))
     
-    # Print all cases for each IHyper block
+    # Save IHyper results
+    save_tabulation_to_file(ih_data, ['Block #', 'Class', 'Cases', 'Misclassified'] + attributes,
+                          results_file, mode='w')
+    
+    # Save individual IHyper block cases
     for i, hb in enumerate(ih_blocks):
-        print(f"\nIHyper Block #{i+1} Cases (Dominant Class: {hb.dominant_class}):")
         case_data = []
         for point in hb.points:
             case_values = point[:-1]  # Feature values
             case_class = point[-1]    # Class value
             case_data.append([*case_values, case_class])
-        print(tabulate(case_data, headers=attributes + [class_col], tablefmt='grid'))
+        save_tabulation_to_file(case_data, attributes + [class_col],
+                              results_file, mode='a')
     
-    print("\nMHyper Results:")
+    print("Processing MHyper...")
     mh_blocks = mhyper(df, class_col)
     mh_data = [[i+1, hb.dominant_class, hb.num_cases, hb.num_misclassified] + 
                [f"{hb.min_bounds[a]:.1f}-{hb.max_bounds[a]:.1f}" for a in attributes]
                for i, hb in enumerate(mh_blocks)]
-    print(tabulate(mh_data, headers=['Block #', 'Class', 'Cases', 'Misclassified'] + attributes,
-                  tablefmt='grid'))
     
-    # Print all cases for each MHyper block
+    # Save MHyper results
+    save_tabulation_to_file(mh_data, ['Block #', 'Class', 'Cases', 'Misclassified'] + attributes,
+                          results_file, mode='a')
+    
+    # Save individual MHyper block cases
     for i, hb in enumerate(mh_blocks):
-        print(f"\nMHyper Block #{i+1} Cases (Dominant Class: {hb.dominant_class}):")
         case_data = []
         for point in hb.points:
             case_values = point[:-1]  # Feature values
             case_class = point[-1]    # Class value
             case_data.append([*case_values, case_class])
-        print(tabulate(case_data, headers=attributes + [class_col], tablefmt='grid'))
+        save_tabulation_to_file(case_data, attributes + [class_col],
+                              results_file, mode='a')
     
-    print("\nIMHyper Results:")
+    print("Processing IMHyper...")
     imh_blocks = imhyper(df, class_col)
     imh_data = [[i+1, hb.dominant_class, hb.num_cases, hb.num_misclassified] + 
                 [f"{hb.min_bounds[a]:.1f}-{hb.max_bounds[a]:.1f}" for a in attributes]
                 for i, hb in enumerate(imh_blocks)]
-    print(tabulate(imh_data, headers=['Block #', 'Class', 'Cases', 'Misclassified'] + attributes,
-                  tablefmt='grid'))
     
-    # Print all cases for each IMHyper block
+    # Save IMHyper results
+    save_tabulation_to_file(imh_data, ['Block #', 'Class', 'Cases', 'Misclassified'] + attributes,
+                          results_file, mode='a')
+    
+    # Save individual IMHyper block cases
     for i, hb in enumerate(imh_blocks):
-        print(f"\nIMHyper Block #{i+1} Cases (Dominant Class: {hb.dominant_class}):")
         case_data = []
         for point in hb.points:
             case_values = point[:-1]  # Feature values
             case_class = point[-1]    # Class value
             case_data.append([*case_values, case_class])
-        print(tabulate(case_data, headers=attributes + [class_col], tablefmt='grid'))
+        save_tabulation_to_file(case_data, attributes + [class_col],
+                              results_file, mode='a')
+    
+    print(f"\nResults have been saved to '{results_file}'")
     
     # Plot all hyperblocks together
     fig, ax = plot_parallel_coordinates(imh_blocks, df, class_col, "IMHyper Blocks in Parallel Coordinates")
