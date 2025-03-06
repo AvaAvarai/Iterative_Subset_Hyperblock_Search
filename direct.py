@@ -558,24 +558,32 @@ def select_file():
     """
     root = tk.Tk()
     root.withdraw()  # Hide the main window
-    root.attributes('-topmost', True)  # Make sure the dialog is on top
-    root.attributes('-alpha', 0.0)  # Make the root window completely transparent
     
-    # Center the dialog on the screen
+    # Make sure the root window is sized to 1x1 and centered
+    root.geometry("1x1+{}+{}".format(
+        root.winfo_screenwidth() // 2,
+        root.winfo_screenheight() // 2
+    ))
+    
+    # Make the root window appear on top of all windows
+    root.attributes('-topmost', True)
+    
+    # Ensure root is initialized and positioned before creating the dialog
     root.update_idletasks()
-    width = root.winfo_width()
-    height = root.winfo_height()
-    x = (root.winfo_screenwidth() // 2) - (width // 2)
-    y = (root.winfo_screenheight() // 2) - (height // 2)
-    root.geometry(f'{width}x{height}+{x}+{y}')
+    root.deiconify()
+    root.focus_force()
+    root.update()
     
+    # Now create the file dialog
     file_path = filedialog.askopenfilename(
-        title="Select CSV File",
-        filetypes=[("CSV files", "*.csv"), ("All files", "*.*")],
+        title="Select a CSV file",
+        filetypes=[("CSV Files", "*.csv"), ("All Files", "*.*")],
         parent=root
     )
     
-    root.destroy()  # Clean up the root window
+    # Destroy the root window
+    root.destroy()
+    
     return file_path
 
 
