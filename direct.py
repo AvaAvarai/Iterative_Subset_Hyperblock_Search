@@ -651,25 +651,56 @@ def plot_gaussian_data(df, class_col):
 
 
 def save_tabulation_to_file(data, headers, filename, mode='w', algorithm_name=None):
-    """
-    Save tabulation results to a file.
-    
-    :param data: List of lists containing the data to tabulate
-    :param headers: List of headers for the table
-    :param filename: Name of the file to save to
-    :param mode: File mode ('w' for write, 'a' for append)
-    :param algorithm_name: Name of the algorithm to include in the output
-    """
     with open(filename, mode) as f:
-        if mode == 'w':
-            f.write("=" * 80 + "\n\n")  # Top border
+        if algorithm_name:
+            f.write(f"\n{algorithm_name} Results:\n")
+            f.write("=" * 80 + "\n")
         
-        # Always print algorithm name if provided, regardless of mode
-        if algorithm_name is not None:
-            f.write(f"\nAlgorithm: {algorithm_name}\n\n")
-            
-        f.write(tabulate(data, headers=headers, tablefmt='grid'))
-        f.write("\n" + "=" * 80 + "\n\n")  # Bottom border and spacing
+        # Calculate column widths based on headers and data
+        widths = [max(len(str(row[i])) for row in [headers] + data) + 2 for i in range(len(headers))]
+        
+        # Write headers
+        header_row = "".join(f"{h:<{w}}" for h, w in zip(headers, widths))
+        f.write(header_row + "\n")
+        f.write("-" * sum(widths) + "\n")
+        
+        # Write data rows
+        for row in data:
+            data_row = "".join(f"{str(item):<{w}}" for item, w in zip(row, widths))
+            f.write(data_row + "\n")
+        
+        f.write("\n")
+
+
+def normalize_data(df, class_col):
+    """
+    Min-max normalize all features (excluding the class column) to the range [0, 1]
+    
+    Args:
+        df: Dataframe containing the data
+        class_col: Name of the class column
+    
+    Returns:
+        Normalized dataframe
+    """
+    # Create a copy to avoid modifying the original dataframe
+    normalized_df = df.copy()
+    
+    # Get feature columns (exclude class column)
+    feature_cols = [col for col in df.columns if col != class_col]
+    
+    # Apply min-max normalization to each feature column
+    for col in feature_cols:
+        min_val = df[col].min()
+        max_val = df[col].max()
+        
+        # Avoid division by zero
+        if max_val > min_val:
+            normalized_df[col] = (df[col] - min_val) / (max_val - min_val)
+        else:
+            normalized_df[col] = 0  # If all values are the same, set to 0
+    
+    return normalized_df
 
 
 def main():
@@ -702,6 +733,17 @@ def main():
         df, class_col = load_data(file_path)
         # Get dataset name from file path
         dataset_name = os.path.splitext(os.path.basename(file_path))[0]
+    
+    # Ask if user wants to normalize the data
+    print("\nDo you want to normalize the data to the range [0, 1] using min-max scaling?")
+    print("1. Yes, normalize the data")
+    print("2. No, use original data")
+    norm_choice = input("Enter your choice (1 or 2): ")
+    
+    if norm_choice == '1':
+        df = normalize_data(df, class_col)
+        dataset_name = f"{dataset_name}_normalized"
+        print("Data has been normalized to the range [0, 1]")
     
     attributes = [col for col in df.columns if col != class_col]
     
