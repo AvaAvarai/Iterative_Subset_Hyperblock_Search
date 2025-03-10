@@ -36,6 +36,9 @@ def find_pure_intervals(df, label_col):
     """Find intervals where consecutive values have same class label"""
     intervals = []
     
+    if len(df) == 0:
+        return intervals
+        
     for col in df.columns:
         if col == label_col:
             continue
@@ -83,6 +86,11 @@ def plot_parallel_coordinates(fig, df, intervals, label_col, highlight_largest=F
     fig.clear()
     ax = fig.add_subplot(111)
     
+    if len(df) == 0:
+        ax.set_title("No data points remaining")
+        fig.tight_layout()
+        return
+        
     # Get unique classes and assign colors
     classes = df[label_col].unique()
     colors = sns.color_palette("Set2", n_colors=len(classes))
