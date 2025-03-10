@@ -146,6 +146,10 @@ def create_control_window(df, label_col):
             intervals = find_pure_intervals(df_current, label_col)
             plot_parallel_coordinates(fig, df_current, intervals, label_col, class_colors=class_colors)
             canvas.draw()
+            
+    def on_closing():
+        control_window.quit()
+        control_window.destroy()
     
     button_frame = tk.Frame(control_window)
     button_frame.pack(side=tk.BOTTOM)
@@ -156,6 +160,7 @@ def create_control_window(df, label_col):
     plot_parallel_coordinates(fig, df_current, intervals, label_col, class_colors=class_colors)
     canvas.draw()
     
+    control_window.protocol("WM_DELETE_WINDOW", on_closing)
     control_window.mainloop()
 
 def main():
