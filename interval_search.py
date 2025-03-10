@@ -86,7 +86,7 @@ def find_pure_intervals(df, label_col):
     
     return intervals
 
-def plot_parallel_coordinates(fig, df, intervals, label_col, highlight_largest=False, class_colors=None):
+def plot_parallel_coordinates(fig, df, intervals, label_col, highlight_largest=False, class_colors=None, iteration=0):
     """Plot parallel coordinates with pure intervals highlighted"""
     # Clear previous plot
     fig.clear()
@@ -129,7 +129,7 @@ def plot_parallel_coordinates(fig, df, intervals, label_col, highlight_largest=F
             zorder=10  # Ensure intervals are drawn on top
         )
     
-    ax.set_title("Parallel Coordinates with Pure Intervals")
+    ax.set_title(f"Parallel Coordinates with Pure Intervals - Iteration {iteration}")
     fig.tight_layout()
 
 def create_control_window(df, label_col):
@@ -149,18 +149,21 @@ def create_control_window(df, label_col):
     
     df_current = df.copy()
     intervals = find_pure_intervals(df_current, label_col)
+    iteration = 0
     
     def highlight_largest():
-        plot_parallel_coordinates(fig, df_current, intervals, label_col, highlight_largest=True, class_colors=class_colors)
+        nonlocal iteration
+        plot_parallel_coordinates(fig, df_current, intervals, label_col, highlight_largest=True, class_colors=class_colors, iteration=iteration)
         canvas.draw()
         
     def remove_largest():
-        nonlocal df_current, intervals
+        nonlocal df_current, intervals, iteration
         if intervals:
+            iteration += 1
             largest_interval = max(intervals, key=lambda x: x['coverage_ratio'])
             df_current = df_current.drop(largest_interval['indices'])
             intervals = find_pure_intervals(df_current, label_col)
-            plot_parallel_coordinates(fig, df_current, intervals, label_col, class_colors=class_colors)
+            plot_parallel_coordinates(fig, df_current, intervals, label_col, class_colors=class_colors, iteration=iteration)
             canvas.draw()
             
     def on_closing():
@@ -173,7 +176,7 @@ def create_control_window(df, label_col):
     tk.Button(button_frame, text="Highlight Largest Interval", command=highlight_largest).pack(side=tk.LEFT)
     tk.Button(button_frame, text="Remove Largest Interval", command=remove_largest).pack(side=tk.LEFT)
     
-    plot_parallel_coordinates(fig, df_current, intervals, label_col, class_colors=class_colors)
+    plot_parallel_coordinates(fig, df_current, intervals, label_col, class_colors=class_colors, iteration=iteration)
     canvas.draw()
     
     control_window.protocol("WM_DELETE_WINDOW", on_closing)
