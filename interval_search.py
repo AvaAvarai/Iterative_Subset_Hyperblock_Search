@@ -83,7 +83,7 @@ def plot_parallel_coordinates(df, intervals, label_col):
     
     # Create parallel coordinates plot
     plt.figure(figsize=(12, 6))
-    pd.plotting.parallel_coordinates(df, label_col, colormap=plt.cm.get_cmap("Set2"))
+    pd.plotting.parallel_coordinates(df, label_col, color=[rgb2hex(c) for c in colors])
     
     # Plot intervals
     for interval in intervals:
