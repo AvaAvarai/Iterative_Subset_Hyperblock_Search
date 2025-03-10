@@ -166,6 +166,15 @@ def create_control_window(df, label_col):
             plot_parallel_coordinates(fig, df_current, intervals, label_col, class_colors=class_colors, iteration=iteration)
             canvas.draw()
             
+    def highlight_and_remove():
+        highlight_largest()
+        control_window.after(1000, remove_largest)  # Wait 1 second before removing
+
+    def auto_remove():
+        if intervals:
+            highlight_and_remove()
+            control_window.after(1500, auto_remove)  # Schedule next removal
+            
     def on_closing():
         control_window.quit()
         control_window.destroy()
@@ -175,6 +184,8 @@ def create_control_window(df, label_col):
     
     tk.Button(button_frame, text="Highlight Largest Interval", command=highlight_largest).pack(side=tk.LEFT)
     tk.Button(button_frame, text="Remove Largest Interval", command=remove_largest).pack(side=tk.LEFT)
+    tk.Button(button_frame, text="Highlight and Remove", command=highlight_and_remove).pack(side=tk.LEFT)
+    tk.Button(button_frame, text="Auto Remove", command=auto_remove).pack(side=tk.LEFT)
     
     plot_parallel_coordinates(fig, df_current, intervals, label_col, class_colors=class_colors, iteration=iteration)
     canvas.draw()
