@@ -80,7 +80,7 @@ def find_pure_intervals(df, label_col):
     
     return intervals
 
-def plot_parallel_coordinates(fig, df, intervals, label_col, highlight_largest=False):
+def plot_parallel_coordinates(fig, df, intervals, label_col, highlight_largest=False, class_colors=None):
     """Plot parallel coordinates with pure intervals highlighted"""
     # Clear previous plot
     fig.clear()
@@ -91,13 +91,8 @@ def plot_parallel_coordinates(fig, df, intervals, label_col, highlight_largest=F
         fig.tight_layout()
         return
         
-    # Get unique classes and assign colors
-    classes = df[label_col].unique()
-    colors = sns.color_palette("Set2", n_colors=len(classes))
-    class_colors = dict(zip(classes, [rgb2hex(c) for c in colors]))
-    
     # Create parallel coordinates plot
-    pd.plotting.parallel_coordinates(df, label_col, color=[rgb2hex(c) for c in colors], ax=ax)
+    pd.plotting.parallel_coordinates(df, label_col, color=[class_colors[c] for c in df[label_col].unique()], ax=ax)
     
     # Find largest interval if highlighting
     largest_interval = None
@@ -131,11 +126,16 @@ def create_control_window(df, label_col):
     canvas = FigureCanvasTkAgg(fig, master=control_window)
     canvas.get_tk_widget().pack(side=tk.TOP, fill=tk.BOTH, expand=1)
     
+    # Create consistent color mapping for all classes at start
+    all_classes = sorted(df[label_col].unique())  # Sort to ensure consistent order
+    colors = sns.color_palette("Set2", n_colors=len(all_classes))
+    class_colors = dict(zip(all_classes, [rgb2hex(c) for c in colors]))
+    
     df_current = df.copy()
     intervals = find_pure_intervals(df_current, label_col)
     
     def highlight_largest():
-        plot_parallel_coordinates(fig, df_current, intervals, label_col, highlight_largest=True)
+        plot_parallel_coordinates(fig, df_current, intervals, label_col, highlight_largest=True, class_colors=class_colors)
         canvas.draw()
         
     def remove_largest():
@@ -144,7 +144,7 @@ def create_control_window(df, label_col):
             largest_interval = max(intervals, key=lambda x: x['count'])
             df_current = df_current.drop(largest_interval['indices'])
             intervals = find_pure_intervals(df_current, label_col)
-            plot_parallel_coordinates(fig, df_current, intervals, label_col)
+            plot_parallel_coordinates(fig, df_current, intervals, label_col, class_colors=class_colors)
             canvas.draw()
     
     button_frame = tk.Frame(control_window)
@@ -153,7 +153,7 @@ def create_control_window(df, label_col):
     tk.Button(button_frame, text="Highlight Largest Interval", command=highlight_largest).pack(side=tk.LEFT)
     tk.Button(button_frame, text="Remove Largest Interval", command=remove_largest).pack(side=tk.LEFT)
     
-    plot_parallel_coordinates(fig, df_current, intervals, label_col)
+    plot_parallel_coordinates(fig, df_current, intervals, label_col, class_colors=class_colors)
     canvas.draw()
     
     control_window.mainloop()
