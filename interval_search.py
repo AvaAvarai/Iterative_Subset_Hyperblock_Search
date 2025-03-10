@@ -49,6 +49,7 @@ def find_pure_intervals(df, label_col):
         current_class = df_sorted[label_col].iloc[0]
         start_val = df_sorted[col].iloc[0]
         count = 1
+        total_cases = len(df[df[label_col] == current_class])
         
         for i in range(1, len(df_sorted)):
             if df_sorted[label_col].iloc[i] != current_class:
@@ -59,11 +60,14 @@ def find_pure_intervals(df, label_col):
                         'end': df_sorted[col].iloc[i-1],
                         'class': current_class,
                         'count': count,
+                        'total_cases': total_cases,
+                        'coverage_ratio': count/total_cases,
                         'indices': df_sorted.index[i-count:i].tolist()
                     })
                 current_class = df_sorted[label_col].iloc[i]
                 start_val = df_sorted[col].iloc[i]
                 count = 1
+                total_cases = len(df[df[label_col] == current_class])
             else:
                 count += 1
                 
@@ -75,6 +79,8 @@ def find_pure_intervals(df, label_col):
                 'end': df_sorted[col].iloc[-1],
                 'class': current_class,
                 'count': count,
+                'total_cases': total_cases,
+                'coverage_ratio': count/total_cases,
                 'indices': df_sorted.index[-count:].tolist()
             })
     
@@ -97,9 +103,11 @@ def plot_parallel_coordinates(fig, df, intervals, label_col, highlight_largest=F
     # Find largest interval if highlighting
     largest_interval = None
     if highlight_largest and intervals:
-        largest_interval = max(intervals, key=lambda x: x['count'])
+        largest_interval = max(intervals, key=lambda x: x['coverage_ratio'])
     
-    # Plot intervals
+    # Plot intervals on top of everything else
+    ax.set_zorder(1)
+    ax.patch.set_visible(False)
     for interval in intervals:
         y_pos = df.columns.get_loc(interval['attribute'])
         alpha = 0.8 if interval == largest_interval else 0.5
@@ -110,7 +118,8 @@ def plot_parallel_coordinates(fig, df, intervals, label_col, highlight_largest=F
             [interval['start'], interval['end']],
             color=color,
             linewidth=linewidth,
-            alpha=alpha
+            alpha=alpha,
+            zorder=10  # Ensure intervals are drawn on top
         )
     
     ax.set_title("Parallel Coordinates with Pure Intervals")
@@ -141,7 +150,7 @@ def create_control_window(df, label_col):
     def remove_largest():
         nonlocal df_current, intervals
         if intervals:
-            largest_interval = max(intervals, key=lambda x: x['count'])
+            largest_interval = max(intervals, key=lambda x: x['coverage_ratio'])
             df_current = df_current.drop(largest_interval['indices'])
             intervals = find_pure_intervals(df_current, label_col)
             plot_parallel_coordinates(fig, df_current, intervals, label_col, class_colors=class_colors)
