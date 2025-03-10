@@ -54,7 +54,8 @@ def find_pure_intervals(df, label_col):
                         'start': start_val,
                         'end': df_sorted[col].iloc[i-1],
                         'class': current_class,
-                        'count': count
+                        'count': count,
+                        'indices': df_sorted.index[i-count:i].tolist()
                     })
                 current_class = df_sorted[label_col].iloc[i]
                 start_val = df_sorted[col].iloc[i]
@@ -69,12 +70,13 @@ def find_pure_intervals(df, label_col):
                 'start': start_val,
                 'end': df_sorted[col].iloc[-1],
                 'class': current_class,
-                'count': count
+                'count': count,
+                'indices': df_sorted.index[-count:].tolist()
             })
     
     return intervals
 
-def plot_parallel_coordinates(df, intervals, label_col):
+def plot_parallel_coordinates(df, intervals, label_col, highlight_largest=False):
     """Plot parallel coordinates with pure intervals highlighted"""
     # Get unique classes and assign colors
     classes = df[label_col].unique()
@@ -85,20 +87,58 @@ def plot_parallel_coordinates(df, intervals, label_col):
     plt.figure(figsize=(12, 6))
     pd.plotting.parallel_coordinates(df, label_col, color=[rgb2hex(c) for c in colors])
     
+    # Find largest interval if highlighting
+    largest_interval = None
+    if highlight_largest and intervals:
+        largest_interval = max(intervals, key=lambda x: x['count'])
+    
     # Plot intervals
     for interval in intervals:
         y_pos = df.columns.get_loc(interval['attribute'])
+        alpha = 0.8 if interval == largest_interval else 0.5
+        linewidth = 8 if interval == largest_interval else 5
+        color = 'yellow' if interval == largest_interval else class_colors[interval['class']]
         plt.plot(
             [y_pos, y_pos],
             [interval['start'], interval['end']],
-            color=class_colors[interval['class']],
-            linewidth=5,
-            alpha=0.5
+            color=color,
+            linewidth=linewidth,
+            alpha=alpha
         )
     
     plt.title("Parallel Coordinates with Pure Intervals")
     plt.tight_layout()
+
+def create_control_window(df, label_col):
+    """Create window with control buttons"""
+    control_window = tk.Tk()
+    control_window.title("Interval Controls")
+    
+    df_current = df.copy()
+    intervals = find_pure_intervals(df_current, label_col)
+    
+    def highlight_largest():
+        plt.close('all')
+        plot_parallel_coordinates(df_current, intervals, label_col, highlight_largest=True)
+        plt.show()
+        
+    def remove_largest():
+        nonlocal df_current, intervals
+        if intervals:
+            largest_interval = max(intervals, key=lambda x: x['count'])
+            df_current = df_current.drop(largest_interval['indices'])
+            intervals = find_pure_intervals(df_current, label_col)
+            plt.close('all')
+            plot_parallel_coordinates(df_current, intervals, label_col)
+            plt.show()
+    
+    tk.Button(control_window, text="Highlight Largest Interval", command=highlight_largest).pack()
+    tk.Button(control_window, text="Remove Largest Interval", command=remove_largest).pack()
+    
+    plot_parallel_coordinates(df_current, intervals, label_col)
     plt.show()
+    
+    control_window.mainloop()
 
 def main():
     # Load data
@@ -110,19 +150,8 @@ def main():
     # Normalize data
     df_norm = normalize_data(df, label_col)
     
-    # Find pure intervals
-    intervals = find_pure_intervals(df_norm, label_col)
-    
-    # Print intervals
-    print("\nPure Intervals Found:")
-    for interval in intervals:
-        print(f"\nAttribute: {interval['attribute']}")
-        print(f"Range: [{interval['start']:.3f}, {interval['end']:.3f}]")
-        print(f"Class: {interval['class']}")
-        print(f"Count: {interval['count']}")
-    
-    # Plot results
-    plot_parallel_coordinates(df_norm, intervals, label_col)
+    # Create control window and show initial plot
+    create_control_window(df_norm, label_col)
 
 if __name__ == "__main__":
     main()
