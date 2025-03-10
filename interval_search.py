@@ -97,13 +97,20 @@ def plot_parallel_coordinates(fig, df, intervals, label_col, highlight_largest=F
         fig.tight_layout()
         return
         
-    # Create parallel coordinates plot
+    # Create parallel coordinates plot with original class colors
     pd.plotting.parallel_coordinates(df, label_col, color=[class_colors[c] for c in df[label_col].unique()], ax=ax)
     
     # Find largest interval if highlighting
     largest_interval = None
     if highlight_largest and intervals:
         largest_interval = max(intervals, key=lambda x: x['coverage_ratio'])
+        
+        # Highlight only the cases in the largest interval
+        for idx in largest_interval['indices']:
+            row = df.loc[idx]
+            for i in range(len(df.columns)-1):
+                if i > 0:
+                    ax.plot([i-1, i], [row.iloc[i-1], row.iloc[i]], color='yellow', linewidth=2, zorder=5)
     
     # Plot intervals on top of everything else
     ax.set_zorder(1)
