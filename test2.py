@@ -125,7 +125,7 @@ def create_hyperblock_envelopes(df, features, class_column):
 
 def visualize_hyperblocks(ax, hyperblocks, features):
     """
-    Visualize hyperblock envelopes on the parallel coordinates plot.
+    Visualize hyperblock envelopes on the parallel coordinates plot with improved highlighting.
     
     Args:
         ax: Matplotlib axis with the parallel coordinates plot
@@ -136,16 +136,38 @@ def visualize_hyperblocks(ax, hyperblocks, features):
     colors = cm.tab10(np.linspace(0, 1, len(classes)))
     
     for cls, color in zip(classes, colors):
+        # Draw connecting polygons between adjacent features to better highlight pure regions
+        for i in range(len(features) - 1):
+            feature1 = features[i]
+            feature2 = features[i + 1]
+            
+            bounds1 = hyperblocks[cls][feature1]
+            bounds2 = hyperblocks[cls][feature2]
+            
+            # Create a polygon connecting the min/max bounds of adjacent features
+            polygon_points = [
+                (i - 0.2, bounds1['min']),  # Bottom left
+                (i - 0.2, bounds1['max']),  # Top left
+                (i + 1 + 0.2, bounds2['max']),  # Top right
+                (i + 1 + 0.2, bounds2['min']),  # Bottom right
+            ]
+            
+            polygon = patches.Polygon(polygon_points, closed=True, 
+                                     alpha=0.15, color=color, edgecolor=None)
+            ax.add_patch(polygon)
+        
+        # Draw rectangles for each feature's bounds (on top of the polygons)
         for i, feature in enumerate(features):
             bounds = hyperblocks[cls][feature]
             min_val = bounds['min']
             max_val = bounds['max']
             
-            # Draw a rectangle for each feature's bounds
+            # Draw a rectangle with a slightly darker edge for better visibility
             rect = patches.Rectangle((i-0.2, min_val), 0.4, max_val-min_val, 
-                                    alpha=0.2, color=color)
+                                    alpha=0.25, color=color, edgecolor=color, 
+                                    linewidth=1.5, linestyle='-')
             ax.add_patch(rect)
-
+            
 def check_purity_violation(new_data, hyperblocks, features, class_column):
     """
     Check if new data points violate the purity of existing hyperblocks.
@@ -455,7 +477,7 @@ def main(file_path, random_seed=42, num_trials=5):
 
 def visualize_best_trial(df, features, class_column, best_trial):
     """
-    Visualize the results of the best trial.
+    Visualize the results of the best trial with enhanced pure region highlighting.
     
     Args:
         df: Full DataFrame
@@ -484,18 +506,13 @@ def visualize_best_trial(df, features, class_column, best_trial):
                                        f"Best Trial: Final Data", axes[1, 0])
     
     # Clear any existing legend before adding hyperblocks to avoid duplicate labels
-    ax3.get_legend().remove()
+    if ax3.get_legend() is not None:
+        ax3.get_legend().remove()
     
-    visualize_hyperblocks(ax3, best_trial['hyperblocks'], features)
+    # Visualize hyperblocks with overlaps
+    visualize_hyperblocks_with_overlaps(ax3, best_trial['hyperblocks'], features)
     
-    # Recreate the legend with unique labels
-    classes = df[class_column].unique()
-    colors = cm.tab10(np.linspace(0, 1, len(classes)))
-    for cls, color in zip(classes, colors):
-        ax3.plot([], [], color=color, label=f'Class {cls}')
-    ax3.legend(loc='upper right')
-    
-    # Visualize violations
+    # Visualize violations or pure regions
     if len(best_trial['violations']) > 0:
         ax4 = visualize_parallel_coordinates(best_trial['violations'], features, class_column, 
                                            "Best Trial: Purity Violations", axes[1, 1])
@@ -506,6 +523,196 @@ def visualize_best_trial(df, features, class_column, best_trial):
     
     plt.tight_layout()
     plt.show()
+
+
+def identify_overlapping_regions(hyperblocks, features):
+    """
+    Identify regions where hyperblocks from different classes overlap.
+    
+    Args:
+        hyperblocks: Dictionary mapping class labels to their hyperblock boundaries
+        features: List of feature names
+        
+    Returns:
+        overlaps: Dictionary mapping feature pairs to lists of overlapping class pairs
+    """
+    classes = list(hyperblocks.keys())
+    overlaps = {}
+    
+    # Check each pair of classes for overlaps in each feature
+    for i, cls1 in enumerate(classes):
+        for cls2 in classes[i+1:]:  # Only check each pair once
+            # Check if the hyperblocks overlap in all features
+            overlap_in_all_features = True
+            
+            for feature in features:
+                bounds1 = hyperblocks[cls1][feature]
+                bounds2 = hyperblocks[cls2][feature]
+                
+                # Check if ranges overlap
+                if bounds1['max'] < bounds2['min'] or bounds2['max'] < bounds1['min']:
+                    overlap_in_all_features = False
+                    break
+            
+            if overlap_in_all_features:
+                # These classes have overlapping hyperblocks
+                if 'full_overlap' not in overlaps:
+                    overlaps['full_overlap'] = []
+                overlaps['full_overlap'].append((cls1, cls2))
+            else:
+                # Check for partial overlaps (feature by feature)
+                for feature in features:
+                    bounds1 = hyperblocks[cls1][feature]
+                    bounds2 = hyperblocks[cls2][feature]
+                    
+                    # Check if ranges overlap for this feature
+                    if not (bounds1['max'] < bounds2['min'] or bounds2['max'] < bounds1['min']):
+                        if feature not in overlaps:
+                            overlaps[feature] = []
+                        overlaps[feature].append((cls1, cls2))
+    
+    return overlaps
+
+def visualize_hyperblocks_with_overlaps(ax, hyperblocks, features):
+    """
+    Visualize hyperblock envelopes on the parallel coordinates plot, 
+    highlighting pure regions and showing overlaps.
+    
+    Args:
+        ax: Matplotlib axis with the parallel coordinates plot
+        hyperblocks: Dictionary mapping class labels to their hyperblock boundaries
+        features: List of feature names
+    """
+    classes = list(hyperblocks.keys())
+    colors = cm.tab10(np.linspace(0, 1, len(classes)))
+    color_dict = dict(zip(classes, colors))
+    
+    # Find overlapping regions
+    overlaps = identify_overlapping_regions(hyperblocks, features)
+    
+    # First, draw the pure regions for each class
+    for cls, color in zip(classes, colors):
+        for i, feature in enumerate(features):
+            bounds = hyperblocks[cls][feature]
+            min_val = bounds['min']
+            max_val = bounds['max']
+            
+            # Draw a rectangle for each feature's bounds
+            rect = patches.Rectangle((i-0.2, min_val), 0.4, max_val-min_val, 
+                                    alpha=0.25, color=color, edgecolor=color, 
+                                    linewidth=1.5, linestyle='-')
+            ax.add_patch(rect)
+    
+    # Then, highlight overlapping regions with a different pattern/color
+    for feature, class_pairs in overlaps.items():
+        if feature == 'full_overlap':
+            # Handle full overlaps (across all features)
+            for cls1, cls2 in class_pairs:
+                for i, feat in enumerate(features):
+                    bounds1 = hyperblocks[cls1][feat]
+                    bounds2 = hyperblocks[cls2][feat]
+                    
+                    # Calculate the overlap region
+                    overlap_min = max(bounds1['min'], bounds2['min'])
+                    overlap_max = min(bounds1['max'], bounds2['max'])
+                    
+                    # Draw the overlap with a hatched pattern
+                    overlap_rect = patches.Rectangle((i-0.2, overlap_min), 0.4, overlap_max-overlap_min, 
+                                                   alpha=0.5, hatch='///', fill=False, 
+                                                   edgecolor='red', linewidth=1.5)
+                    ax.add_patch(overlap_rect)
+        else:
+            # Handle partial overlaps (specific features)
+            i = features.index(feature)
+            for cls1, cls2 in class_pairs:
+                bounds1 = hyperblocks[cls1][feature]
+                bounds2 = hyperblocks[cls2][feature]
+                
+                # Calculate the overlap region
+                overlap_min = max(bounds1['min'], bounds2['min'])
+                overlap_max = min(bounds1['max'], bounds2['max'])
+                
+                # Draw the overlap with a hatched pattern
+                overlap_rect = patches.Rectangle((i-0.2, overlap_min), 0.4, overlap_max-overlap_min, 
+                                               alpha=0.5, hatch='///', fill=False, 
+                                               edgecolor='orange', linewidth=1.5)
+                ax.add_patch(overlap_rect)
+    
+    # Calculate pure areas (excluding overlaps)
+    pure_areas, total_pure_area = calculate_pure_areas(hyperblocks, features, overlaps)
+    
+    # Add a legend with class information and overlap pattern
+    legend_elements = []
+    
+    # Add class patches with area information
+    for cls, color in zip(classes, colors):
+        full_area = calculate_hyperblock_area(hyperblocks, features)[0][cls]
+        pure_area = pure_areas[cls]
+        
+        # Create a patch for the legend
+        class_patch = patches.Patch(
+            color=color, alpha=0.25,
+            label=f'Class {cls} (Area: {pure_area:.4f})'
+        )
+        legend_elements.append(class_patch)
+    
+    # Add overlap patch
+    if any(overlaps.values()):
+        overlap_patch = patches.Patch(
+            facecolor='white', edgecolor='red', alpha=0.5, hatch='///',
+            label='Overlapping (Non-Pure) Regions'
+        )
+        legend_elements.append(overlap_patch)
+    
+    # Add total area information
+    total_area = sum(calculate_hyperblock_area(hyperblocks, features)[0].values())
+    total_patch = patches.Patch(
+        color='none', label=f'Total Pure Area: {total_pure_area:.4f}'
+    )
+    legend_elements.append(total_patch)
+    
+    # Add the legend
+    ax.legend(handles=legend_elements, loc='upper right', fontsize=9)
+
+def calculate_pure_areas(hyperblocks, features, overlaps):
+    """
+    Calculate the area of pure regions (excluding overlaps) for each class.
+    
+    Args:
+        hyperblocks: Dictionary mapping class labels to their hyperblock boundaries
+        features: List of feature names
+        overlaps: Dictionary mapping feature pairs to lists of overlapping class pairs
+        
+    Returns:
+        pure_areas: Dictionary mapping class labels to their pure area
+        total_pure_area: Total area of all pure regions
+    """
+    # Start with the full hyperblock areas
+    class_areas, total_area = calculate_hyperblock_area(hyperblocks, features)
+    pure_areas = class_areas.copy()
+    
+    # Subtract overlapping areas
+    if 'full_overlap' in overlaps:
+        for cls1, cls2 in overlaps['full_overlap']:
+            # Calculate the volume of the overlap
+            overlap_volume = 1.0
+            for feature in features:
+                bounds1 = hyperblocks[cls1][feature]
+                bounds2 = hyperblocks[cls2][feature]
+                
+                overlap_min = max(bounds1['min'], bounds2['min'])
+                overlap_max = min(bounds1['max'], bounds2['max'])
+                overlap_volume *= (overlap_max - overlap_min)
+            
+            # Subtract half of the overlap from each class
+            # (this is a simplification - in reality, the overlap belongs to neither class)
+            pure_areas[cls1] -= overlap_volume / 2
+            pure_areas[cls2] -= overlap_volume / 2
+    
+    # Calculate total pure area
+    total_pure_area = sum(pure_areas.values())
+    
+    return pure_areas, total_pure_area
 
 if __name__ == "__main__":
     # Replace 'your_dataset.csv' with the actual file path
