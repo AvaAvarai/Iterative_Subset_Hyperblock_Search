@@ -284,14 +284,16 @@ def print_hyperblock_bounds(hyperblocks, features):
     
     print("-" * 80)
 
-def main(file_path, random_seed=42, num_trials=5):
+def main(file_path, random_seed=42, num_trials=5, k=3, increment_percentage=0.05):
     """
     Main function to execute the visual analytics and incremental data selection process.
     
     Args:
         file_path: Path to the CSV file
         random_seed: Random seed for reproducibility
-        num_trials: Number of different initial 1/3 subsets to try
+        num_trials: Number of different initial 1/k subsets to try
+        k: Denominator for initial subset size (1/k of the dataset)
+        increment_percentage: Percentage of dataset to add in each iteration (default: 0.05 or 5%)
     """
     # Set random seed for reproducibility
     np.random.seed(random_seed)
@@ -299,12 +301,12 @@ def main(file_path, random_seed=42, num_trials=5):
     # Step 1: Load and preprocess data
     df, features, class_column = load_and_preprocess_data(file_path, random_seed)
     n_samples = len(df)
-    initial_size = n_samples // 3
+    initial_size = n_samples // k
     
     # Store results from all trials
     trial_results = []
     
-    # Try different initial 1/3 subsets
+    # Try different initial 1/k subsets
     for trial in range(num_trials):
         print(f"\nTrial {trial+1}/{num_trials}:")
         
@@ -323,12 +325,12 @@ def main(file_path, random_seed=42, num_trials=5):
         
         # Incremental data addition and purity checking
         current_data = initial_data.copy()
-        increment_size = int(n_samples * 0.05)  # 5% of the dataset
+        increment_size = int(n_samples * increment_percentage)  # Parameterized increment size
         
         # Track data points that violate purity
         all_violations = pd.DataFrame(columns=df.columns)
         
-        # Process remaining data in 5% increments
+        # Process remaining data in increments
         remaining_indices_list = remaining_indices.tolist()
         
         iteration = 1
@@ -376,12 +378,12 @@ def main(file_path, random_seed=42, num_trials=5):
         class_areas, total_area = calculate_hyperblock_area(hyperblocks, features)
         
         # Print summary for this trial
-        print(f"  Initial subset size: {initial_size}")
+        print(f"  Initial subset size: {initial_size} (1/{k} of dataset)")
         print(f"  Final dataset size: {used_data_count}")
         print(f"  Number of purity violations: {len(all_violations)}")
         print(f"  Data usage: {used_data_count} samples ({data_usage_percentage:.2f}%)")
         
-        # Print hyperblock bounds and areas
+        # Print hyperblock areas
         print("\n  Hyperblock Areas:")
         for cls, area in class_areas.items():
             print(f"    Class {cls}: {area:.6f}")
@@ -427,10 +429,15 @@ def main(file_path, random_seed=42, num_trials=5):
     
     # Print the table
     print("\n" + "="*80)
-    print("Trial Results (Sorted by Data Usage):")
+    print(f"Trial Results (Sorted by Data Usage) - Initial subset: 1/{k} of dataset:")
     print("="*80)
     print(results_table.to_string(index=False))
     print("="*80)
+    
+    # Save results to CSV
+    csv_filename = f"trial_results_{file_path.split('/')[-1].split('.')[0]}_k{k}_trials{num_trials}.csv"
+    results_table.to_csv(csv_filename, index=False)
+    print(f"\nResults saved to {csv_filename}")
     
     # Find the best trial (with minimum data usage)
     best_trial = min(trial_results, key=lambda x: x['used_count'])
@@ -452,11 +459,11 @@ def main(file_path, random_seed=42, num_trials=5):
     print(f"  Total Area: {best_trial['total_area']:.6f}")
     
     # Visualize the best trial
-    visualize_best_trial(df, features, class_column, best_trial)
+    visualize_best_trial(df, features, class_column, best_trial, k)
     
     return best_trial, results_table
 
-def visualize_best_trial(df, features, class_column, best_trial):
+def visualize_best_trial(df, features, class_column, best_trial, k):
     """
     Visualize the results of the best trial with enhanced pure region highlighting.
     
@@ -465,13 +472,14 @@ def visualize_best_trial(df, features, class_column, best_trial):
         features: List of feature names
         class_column: Name of the class column
         best_trial: Dictionary containing the results of the best trial
+        k: Denominator for initial subset size (1/k of the dataset)
     """
     # Create a figure with subplots for visualization
     fig, axes = plt.subplots(2, 2, figsize=(20, 12))
     
     # Visualize initial data
     ax1 = visualize_parallel_coordinates(best_trial['initial_data'], features, class_column, 
-                                        "Best Trial: Initial Data Subset (1/3 of Dataset)", axes[0, 0])
+                                        f"Best Trial: Initial Data Subset (1/{k} of Dataset)", axes[0, 0])
     
     # Visualize hyperblocks on the initial data
     visualize_hyperblocks(ax1, best_trial['hyperblocks'], features)
@@ -698,4 +706,6 @@ def calculate_pure_areas(hyperblocks, features, overlaps):
 if __name__ == "__main__":
     # Replace 'your_dataset.csv' with the actual file path
     # You can also specify a different random seed if needed
-    main('fisher_iris.csv', random_seed=42, num_trials=50)
+    # k parameter controls the initial subset size (1/k of the dataset)
+    # increment_percentage controls how much data to add in each iteration
+    main('fisher_iris.csv', random_seed=42, num_trials=100, k=3, increment_percentage=0.05)
