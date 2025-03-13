@@ -348,7 +348,11 @@ def main(file_path, random_seed=42, num_trials=5):
             # If violations occur, we're done
             if len(violations) > 0:
                 violations_occurred = True
-                all_violations = pd.concat([all_violations, violations], ignore_index=True)
+                # Fix the concatenation warning by handling empty DataFrames properly
+                if len(all_violations) == 0:
+                    all_violations = violations.copy()
+                else:
+                    all_violations = pd.concat([all_violations, violations], ignore_index=True)
                 print(f"  Violations detected in iteration {iteration}. Stopping.")
             
             # Add non-violating points to current data
