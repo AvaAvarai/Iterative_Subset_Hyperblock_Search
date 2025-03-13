@@ -125,7 +125,7 @@ def create_hyperblock_envelopes(df, features, class_column):
 
 def visualize_hyperblocks(ax, hyperblocks, features):
     """
-    Visualize hyperblock envelopes on the parallel coordinates plot with improved highlighting.
+    Visualize hyperblock envelopes on the parallel coordinates plot.
     
     Args:
         ax: Matplotlib axis with the parallel coordinates plot
@@ -136,38 +136,17 @@ def visualize_hyperblocks(ax, hyperblocks, features):
     colors = cm.tab10(np.linspace(0, 1, len(classes)))
     
     for cls, color in zip(classes, colors):
-        # Draw connecting polygons between adjacent features to better highlight pure regions
-        for i in range(len(features) - 1):
-            feature1 = features[i]
-            feature2 = features[i + 1]
-            
-            bounds1 = hyperblocks[cls][feature1]
-            bounds2 = hyperblocks[cls][feature2]
-            
-            # Create a polygon connecting the min/max bounds of adjacent features
-            polygon_points = [
-                (i - 0.2, bounds1['min']),  # Bottom left
-                (i - 0.2, bounds1['max']),  # Top left
-                (i + 1 + 0.2, bounds2['max']),  # Top right
-                (i + 1 + 0.2, bounds2['min']),  # Bottom right
-            ]
-            
-            polygon = patches.Polygon(polygon_points, closed=True, 
-                                     alpha=0.15, color=color, edgecolor=None)
-            ax.add_patch(polygon)
-        
-        # Draw rectangles for each feature's bounds (on top of the polygons)
         for i, feature in enumerate(features):
             bounds = hyperblocks[cls][feature]
             min_val = bounds['min']
             max_val = bounds['max']
             
-            # Draw a rectangle with a slightly darker edge for better visibility
+            # Use facecolor and edgecolor instead of color
             rect = patches.Rectangle((i-0.2, min_val), 0.4, max_val-min_val, 
-                                    alpha=0.25, color=color, edgecolor=color, 
-                                    linewidth=1.5, linestyle='-')
+                                    alpha=0.2, facecolor=color, edgecolor=color, 
+                                    linewidth=1.5)
             ax.add_patch(rect)
-            
+
 def check_purity_violation(new_data, hyperblocks, features, class_column):
     """
     Check if new data points violate the purity of existing hyperblocks.
@@ -597,10 +576,10 @@ def visualize_hyperblocks_with_overlaps(ax, hyperblocks, features):
             min_val = bounds['min']
             max_val = bounds['max']
             
-            # Draw a rectangle for each feature's bounds
+            # Use facecolor and edgecolor instead of color
             rect = patches.Rectangle((i-0.2, min_val), 0.4, max_val-min_val, 
-                                    alpha=0.25, color=color, edgecolor=color, 
-                                    linewidth=1.5, linestyle='-')
+                                    alpha=0.25, facecolor=color, edgecolor=color, 
+                                    linewidth=1.5)
             ax.add_patch(rect)
     
     # Then, highlight overlapping regions with a different pattern/color
@@ -651,7 +630,7 @@ def visualize_hyperblocks_with_overlaps(ax, hyperblocks, features):
         
         # Create a patch for the legend
         class_patch = patches.Patch(
-            color=color, alpha=0.25,
+            facecolor=color, alpha=0.25,  # Use facecolor instead of color
             label=f'Class {cls} (Area: {pure_area:.4f})'
         )
         legend_elements.append(class_patch)
@@ -667,7 +646,7 @@ def visualize_hyperblocks_with_overlaps(ax, hyperblocks, features):
     # Add total area information
     total_area = sum(calculate_hyperblock_area(hyperblocks, features)[0].values())
     total_patch = patches.Patch(
-        color='none', label=f'Total Pure Area: {total_pure_area:.4f}'
+        facecolor='none', edgecolor='none', label=f'Total Pure Area: {total_pure_area:.4f}'
     )
     legend_elements.append(total_patch)
     
@@ -717,4 +696,4 @@ def calculate_pure_areas(hyperblocks, features, overlaps):
 if __name__ == "__main__":
     # Replace 'your_dataset.csv' with the actual file path
     # You can also specify a different random seed if needed
-    main('fisher_iris.csv', random_seed=42, num_trials=5)
+    main('fisher_iris.csv', random_seed=42, num_trials=50)
