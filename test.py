@@ -1,246 +1,192 @@
-import numpy as np
-from dataclasses import dataclass
-from typing import List, Tuple, Optional
-import concurrent.futures
-from collections import defaultdict
 import pandas as pd
-import os
+import numpy as np
 import matplotlib.pyplot as plt
+from matplotlib.path import Path
+import matplotlib.patches as patches
+import random
 
-@dataclass
-class DataPoint:
-    values: np.ndarray
-    class_label: int
+def load_and_preprocess_data(file_path):
+    """
+    Load CSV data and preprocess numerical features with Min-Max normalization
+    """
+    # Load the CSV file
+    df = pd.read_csv(file_path)
+    
+    # Find the class column (case-insensitive)
+    class_col = None
+    for col in df.columns:
+        if col.lower() == 'class':
+            class_col = col
+            break
+    
+    if class_col is None:
+        raise ValueError("No 'class' column found in the dataset")
+    
+    # Separate features and class
+    features = df.drop(columns=[class_col])
+    classes = df[class_col]
+    
+    # Apply Min-Max normalization to numerical features
+    normalized_features = (features - features.min()) / (features.max() - features.min())
+    
+    # Combine normalized features with original class labels
+    normalized_df = pd.concat([normalized_features, classes], axis=1)
+    
+    return normalized_df, class_col
 
-@dataclass
-class HyperBlock:
-    min_bounds: np.ndarray
-    max_bounds: np.ndarray
-    class_label: int
-    accuracy: float = 100.0
-    num_points: int = 0  # Added field to track number of points
+def parallel_coordinates_plot(data, class_column, title, filename=None):
+    """
+    Create a parallel coordinates plot for the given data
+    """
+    # Get feature names (excluding class column)
+    features = [col for col in data.columns if col != class_column]
     
-class HyperBlockGenerator:
-    def __init__(self, accuracy_threshold: float = 100.0):
-        self.accuracy_threshold = accuracy_threshold
-        self.hyperblocks: List[HyperBlock] = []
-        
-    def generate_hyperblocks(self, data: List[DataPoint]) -> List[HyperBlock]:
-        """Main method to generate hyperblocks using interval-based approach followed by merging"""
-        # Convert data to numpy array for faster processing
-        data_array = np.array([d.values for d in data])
-        labels = np.array([d.class_label for d in data])
-        
-        # Min-max normalize the data
-        data_min = np.min(data_array, axis=0)
-        data_max = np.max(data_array, axis=0)
-        data_array = (data_array - data_min) / (data_max - data_min)
-        
-        # Step 1: Generate initial hyperblocks using interval-based approach
-        initial_blocks = self._generate_interval_hyperblocks(data_array, labels)
-        
-        # Step 2: Merge overlapping hyperblocks
-        merged_blocks = self._merge_hyperblocks(initial_blocks, data_array, labels)
-        
-        self.hyperblocks = merged_blocks
-        return merged_blocks
+    # Get unique classes and assign colors
+    classes = data[class_column].unique()
+    colors = plt.cm.rainbow(np.linspace(0, 1, len(classes)))
+    color_dict = dict(zip(classes, colors))
     
-    def _generate_interval_hyperblocks(self, data: np.ndarray, labels: np.ndarray) -> List[HyperBlock]:
-        """Generate initial hyperblocks using interval-based approach"""
-        n_dims = data.shape[1]
-        blocks = []
-        
-        # Process each dimension/attribute in parallel
-        with concurrent.futures.ThreadPoolExecutor() as executor:
-            future_to_dim = {
-                executor.submit(self._find_intervals, data[:, dim], labels, dim, n_dims): dim 
-                for dim in range(n_dims)
-            }
-            
-            for future in concurrent.futures.as_completed(future_to_dim):
-                dim_blocks = future.result()
-                blocks.extend(dim_blocks)
-                
-        return blocks
+    # Create figure and axis
+    fig = plt.figure(figsize=(12, 6))
+    ax = plt.gca()
     
-    def _find_intervals(self, dim_data: np.ndarray, labels: np.ndarray, dim: int, n_dims: int) -> List[HyperBlock]:
-        """Find intervals in a single dimension that meet accuracy threshold"""
-        blocks = []
-        sorted_indices = np.argsort(dim_data)
-        sorted_data = dim_data[sorted_indices]
-        sorted_labels = labels[sorted_indices]
-        
-        start_idx = 0
-        while start_idx < len(sorted_data):
-            current_label = sorted_labels[start_idx]
-            end_idx = start_idx + 1
-            
-            # Extend interval while maintaining class purity
-            while (end_idx < len(sorted_data) and 
-                   sorted_labels[end_idx] == current_label):
-                end_idx += 1
-                
-            if end_idx - start_idx > 1:  # Minimum 2 points for an interval
-                # Create hyperblock for this interval
-                min_bounds = np.full(n_dims, -np.inf)
-                max_bounds = np.full(n_dims, np.inf)
-                min_bounds[dim] = sorted_data[start_idx]
-                max_bounds[dim] = sorted_data[end_idx - 1]
-                
-                blocks.append(HyperBlock(
-                    min_bounds=min_bounds,
-                    max_bounds=max_bounds,
-                    class_label=current_label,
-                    num_points=end_idx - start_idx
-                ))
-                
-            start_idx = end_idx
-            
-        return blocks
+    # Set up the axes
+    x = list(range(len(features)))
+    ax.set_xlim([x[0]-0.5, x[-1]+0.5])
+    ax.set_ylim([0, 1])
     
-    def _merge_hyperblocks(self, blocks: List[HyperBlock], data: np.ndarray, 
-                          labels: np.ndarray) -> List[HyperBlock]:
-        """Merge overlapping hyperblocks while maintaining accuracy"""
-        merged = blocks.copy()
-        changes_made = True
-        
-        while changes_made:
-            changes_made = False
-            
-            for i in range(len(merged)):
-                for j in range(i + 1, len(merged)):
-                    if merged[i].class_label != merged[j].class_label:
-                        continue
-                        
-                    # Try merging blocks i and j
-                    merged_min = np.maximum(merged[i].min_bounds, merged[j].min_bounds)
-                    merged_max = np.minimum(merged[i].max_bounds, merged[j].max_bounds)
-                    
-                    # Check if merge is valid
-                    if np.all(merged_min <= merged_max):
-                        # Calculate accuracy and points of merged block
-                        accuracy, num_points = self._calculate_accuracy_and_points(
-                            merged_min, merged_max, 
-                            merged[i].class_label, 
-                            data, labels
-                        )
-                        
-                        if accuracy >= self.accuracy_threshold:
-                            # Create new merged block
-                            new_block = HyperBlock(
-                                min_bounds=merged_min,
-                                max_bounds=merged_max,
-                                class_label=merged[i].class_label,
-                                accuracy=accuracy,
-                                num_points=num_points
-                            )
-                            
-                            # Replace blocks i and j with merged block
-                            merged[i] = new_block
-                            merged.pop(j)
-                            changes_made = True
-                            break
-                            
-                if changes_made:
-                    break
-                    
-        return merged
+    # Set the tick positions and labels
+    ax.set_xticks(x)
+    ax.set_xticklabels(features, rotation=45)
     
-    def _calculate_accuracy_and_points(self, min_bounds: np.ndarray, max_bounds: np.ndarray, 
-                          class_label: int, data: np.ndarray, 
-                          labels: np.ndarray) -> Tuple[float, int]:
-        """Calculate accuracy and number of points in a hyperblock"""
-        # Find points within the hyperblock bounds
-        mask = np.all((data >= min_bounds) & (data <= max_bounds), axis=1)
-        points_inside = data[mask]
-        labels_inside = labels[mask]
+    # Plot each data point as a line
+    for i, row in data.iterrows():
+        y = [row[feature] for feature in features]
+        ax.plot(x, y, color=color_dict[row[class_column]], linewidth=1, alpha=0.5)
+    
+    # Add a legend
+    legend_elements = [plt.Line2D([0], [0], color=color_dict[cls], lw=2, label=str(cls)) 
+                      for cls in classes]
+    ax.legend(handles=legend_elements, loc='upper right')
+    
+    # Set title and labels
+    plt.title(title)
+    plt.tight_layout()
+    
+    # Save the figure if filename is provided
+    if filename:
+        plt.savefig(filename)
         
-        if len(points_inside) == 0:
-            return 0.0, 0
-            
-        # Calculate accuracy
-        correct = np.sum(labels_inside == class_label)
-        return (correct / len(points_inside)) * 100, len(points_inside)
+    plt.show()
 
-def visualize_hyperblocks(hyperblocks: List[HyperBlock], feature_names: List[str]):
-    """Visualize hyperblocks using parallel coordinates"""
+def incremental_visualization(data, class_column, seed=42):
+    """
+    Incrementally add data and visualize using parallel coordinates in the same window
+    """
+    # Set random seed for reproducibility
+    random.seed(seed)
+    np.random.seed(seed)
+    
+    # Get total number of samples
+    total_samples = len(data)
+    
+    # Start with 1/3 of the data
+    initial_size = int(total_samples / 3)
+    
+    # Calculate 5% increment size
+    increment_size = int(total_samples * 0.05)
+    
+    # Create a random permutation of indices
+    indices = np.random.permutation(total_samples)
+    
+    # Create a figure that will be reused
     plt.figure(figsize=(12, 6))
     
-    # Create parallel coordinates
-    n_dims = len(feature_names)
-    dims = range(n_dims)
+    # Start with initial subset
+    current_size = initial_size
     
-    # Plot each hyperblock
-    colors = ['r', 'b', 'g', 'c', 'm', 'y']  # Add more colors if needed
-    for i, block in enumerate(hyperblocks):
-        color = colors[block.class_label % len(colors)]
+    # Incrementally add data and visualize (including initial subset)
+    while current_size <= total_samples:
+        # Get current subset of data
+        current_indices = indices[:current_size]
+        current_data = data.iloc[current_indices]
         
-        # Plot min bounds
-        plt.plot(dims, block.min_bounds, color=color, alpha=0.5)
-        # Plot max bounds
-        plt.plot(dims, block.max_bounds, color=color, alpha=0.5)
-        # Fill between bounds
-        plt.fill_between(dims, block.min_bounds, block.max_bounds, color=color, alpha=0.2)
-
-    plt.xticks(dims, feature_names, rotation=45)
-    plt.ylabel('Normalized Values')
-    plt.title('Hyperblocks Visualization (Parallel Coordinates)')
-    plt.grid(True)
-    plt.tight_layout()
+        # Clear previous plot
+        plt.clf()
+        ax = plt.gca()
+        
+        # Get feature names (excluding class column)
+        features = [col for col in current_data.columns if col != class_column]
+        
+        # Get unique classes and assign colors
+        classes = current_data[class_column].unique()
+        colors = plt.cm.rainbow(np.linspace(0, 1, len(classes)))
+        color_dict = dict(zip(classes, colors))
+        
+        # Set up the axes
+        x = list(range(len(features)))
+        ax.set_xlim([x[0]-0.5, x[-1]+0.5])
+        ax.set_ylim([0, 1])
+        
+        # Set the tick positions and labels
+        ax.set_xticks(x)
+        ax.set_xticklabels(features, rotation=45)
+        
+        # Plot each data point as a line
+        for i, row in current_data.iterrows():
+            y = [row[feature] for feature in features]
+            ax.plot(x, y, color=color_dict[row[class_column]], linewidth=1, alpha=0.5)
+        
+        # Add a legend
+        legend_elements = [plt.Line2D([0], [0], color=color_dict[cls], lw=2, label=str(cls)) 
+                          for cls in classes]
+        ax.legend(handles=legend_elements, loc='upper right')
+        
+        # Set title and labels
+        title = f"Parallel Coordinates Plot - {current_size}/{total_samples} samples ({current_size/total_samples:.1%})"
+        plt.title(title)
+        plt.tight_layout()
+        
+        # Save the figure
+        plt.savefig(f"parallel_coords_{current_size}.png")
+        
+        # Display the plot and pause to show it
+        plt.draw()
+        plt.pause(1)  # Pause for 1 second to show the plot
+        
+        # Break if we've reached the total number of samples
+        if current_size == total_samples:
+            break
+            
+        # Add 5% more data (or whatever remains if less than 5%)
+        next_size = min(current_size + increment_size, total_samples)
+        current_size = next_size
+    
+    # Keep the final plot open
+    plt.show()
 
 def main():
+    # Set random seed for reproducibility
+    random.seed(42)
+    np.random.seed(42)
+    
+    # File path to the CSV dataset
+    # Replace with your actual file path
+    file_path = "fisher_iris.csv"
+    
     try:
-        # Try to load data, first checking if file exists
-        file_path = "fisher_iris_2class.csv"  # Change this to actual dataset path
-        if not os.path.exists(file_path):
-            raise FileNotFoundError(f"Dataset file not found: {file_path}")
-            
-        # Load the data, keeping strings as strings
-        df = pd.read_csv(file_path)
+        # Load and preprocess the data
+        print("Loading and preprocessing data...")
+        normalized_data, class_column = load_and_preprocess_data(file_path)
         
-        # Find the class column, case-insensitive
-        class_col = next((col for col in df.columns if col.lower() == 'class'), None)
-        if class_col is None:
-            # If no 'class' column, try the last column as a fallback
-            class_col = df.columns[-1]
-            print(f"Warning: No 'class' column found, using last column '{class_col}' as class labels")
+        # Run incremental visualization
+        print("Starting incremental visualization...")
+        incremental_visualization(normalized_data, class_column)
         
-        # Convert only the feature columns to numeric, leave class labels as strings
-        attributes = [col for col in df.columns if col != class_col]
-        df[attributes] = df[attributes].apply(pd.to_numeric, errors='coerce')
+        print("Visualization complete!")
         
-        # Check for any non-numeric data in feature columns
-        if df[attributes].isna().any().any():
-            raise ValueError("Non-numeric data found in feature columns after conversion")
-            
-        X = df[attributes].to_numpy()
-        y = pd.factorize(df[class_col])[0]  # Convert string labels to numeric indices
-        
-        data_points = [DataPoint(values=x, class_label=y_) for x, y_ in zip(X, y)]
-        
-        generator = HyperBlockGenerator(accuracy_threshold=100.0)
-        hyperblocks = generator.generate_hyperblocks(data_points)
-        
-        print(f"\nGenerated {len(hyperblocks)} hyperblocks:")
-        for i, block in enumerate(hyperblocks):
-            print(f"\nHyperblock {i + 1}:")
-            print(f"Class: {block.class_label}")
-            print(f"Number of points: {block.num_points}")
-            print(f"Accuracy: {block.accuracy:.2f}%")
-            print(f"Min bounds: {block.min_bounds}")
-            print(f"Max bounds: {block.max_bounds}")
-            
-        # Visualize the hyperblocks
-        visualize_hyperblocks(hyperblocks, attributes)
-        plt.show()
-            
-    except FileNotFoundError as e:
-        print(f"Error: {str(e)}")
-    except ValueError as e:
-        print(f"Error: {str(e)}")
     except Exception as e:
-        print(f"Unexpected error: {str(e)}")
-        raise
+        print(f"An error occurred: {e}")
 
 if __name__ == "__main__":
     main()
