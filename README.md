@@ -4,6 +4,8 @@ Finding representative hyperblocks by iterating on subsets of the training data 
 
 Video of picking up completely randomly 1/3 subsets of the Fisher Iris training data iteratively with replacement: <https://www.youtube.com/watch?v=HR7-bnE_b64>
 
+Working demo of growing 1/3 subset until HB purity violation: ![demo image](./image.png)
+
 ## How to use
 
 1. Clone the repository:
