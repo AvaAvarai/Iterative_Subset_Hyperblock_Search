@@ -415,8 +415,7 @@ def main(file_path, random_seed=42, num_trials=5):
         'Data Usage (%)': [f"{r['data_usage_percentage']:.2f}%" for r in trial_results],
         'Total HB Area': [f"{r['total_area']:.6f}" for r in trial_results],
         'Iterations': [r['iterations'] for r in trial_results],
-        'Violations': [r['violation_count'] for r in trial_results],
-        'Stopped Early': [r['violation_count'] > 0 for r in trial_results]
+        'Violations': [r['violation_count'] for r in trial_results]
     })
     
     # Sort by data usage (ascending)
@@ -437,7 +436,6 @@ def main(file_path, random_seed=42, num_trials=5):
     print(f"  Data used: {best_trial['used_count']} samples ({best_trial['data_usage_percentage']:.2f}%)")
     print(f"  Iterations completed: {best_trial['iterations']}")
     print(f"  Violations: {best_trial['violation_count']}")
-    print(f"  Stopped early: {best_trial['violation_count'] > 0}")
     
     # Print detailed information about the best trial
     print("\nBest Trial Hyperblock Details:")
