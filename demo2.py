@@ -505,9 +505,47 @@ def imhyper_algorithm(df, class_col, purity_threshold=0.95, impurity_threshold=0
     print(f"IMHyper created a total of {len(all_blocks)} hyperblocks")
     return all_blocks
 
+def calculate_dataset_coverage(df, hyperblocks):
+    """
+    Calculate how many points from the dataset are covered by the hyperblocks.
+    
+    Args:
+        df: DataFrame containing the data
+        hyperblocks: List of Hyperblock objects
+    
+    Returns:
+        covered_count: Number of points covered
+        coverage_percentage: Percentage of dataset covered
+        uncovered_points: DataFrame containing uncovered points
+    """
+    # Convert all data points to hashable tuples for set operations
+    all_points = set(tuple(row) for row in df.values)
+    
+    # Collect all points covered by hyperblocks
+    covered_points = set()
+    for hb in hyperblocks:
+        for point in hb.points:
+            covered_points.add(tuple(point))
+    
+    # Calculate uncovered points
+    uncovered_points = all_points - covered_points
+    
+    # Calculate coverage statistics
+    total_points = len(all_points)
+    covered_count = len(covered_points)
+    coverage_percentage = (covered_count / total_points) * 100
+    
+    # Create DataFrame of uncovered points if needed
+    uncovered_df = None
+    if uncovered_points:
+        uncovered_rows = [list(p) for p in uncovered_points]
+        uncovered_df = pd.DataFrame(uncovered_rows, columns=df.columns)
+    
+    return covered_count, coverage_percentage, uncovered_df
+
 def visualize_hyperblocks(df, features, class_col, hyperblocks, title="Hyperblocks in Parallel Coordinates"):
     """
-    Visualize hyperblocks in parallel coordinates.
+    Visualize hyperblocks in parallel coordinates and print coverage statistics.
     
     Args:
         df: DataFrame containing the data
@@ -516,6 +554,9 @@ def visualize_hyperblocks(df, features, class_col, hyperblocks, title="Hyperbloc
         hyperblocks: List of Hyperblock objects
         title: Title for the plot
     """
+    # Calculate dataset coverage
+    covered_count, coverage_percentage, uncovered_df = calculate_dataset_coverage(df, hyperblocks)
+    
     # Create figure and axis
     fig, ax = plt.subplots(figsize=(14, 8))
     
@@ -573,8 +614,27 @@ def visualize_hyperblocks(df, features, class_col, hyperblocks, title="Hyperbloc
     ax.set_ylim(0, 1)  # Set y-axis from 0 to 1 (normalized data)
     
     # Set title and labels
-    ax.set_title(title)
+    ax.set_title(f"{title}\nDataset Coverage: {covered_count}/{len(df)} points ({coverage_percentage:.2f}%)")
     ax.grid(True, linestyle='--', alpha=0.7)
+    
+    # Print dataset coverage information
+    print("\nDataset Coverage Information:")
+    print("-" * 60)
+    print(f"Total data points: {len(df)}")
+    print(f"Points covered by hyperblocks: {covered_count}")
+    print(f"Coverage percentage: {coverage_percentage:.2f}%")
+    
+    if uncovered_df is not None and not uncovered_df.empty:
+        print(f"Uncovered points: {len(uncovered_df)}")
+        
+        # Print class distribution of uncovered points
+        if class_col in uncovered_df.columns:
+            uncovered_class_counts = uncovered_df[class_col].value_counts()
+            print("\nUncovered points class distribution:")
+            for cls, count in uncovered_class_counts.items():
+                print(f"  Class {cls}: {count} points")
+    else:
+        print("All points are covered by hyperblocks!")
     
     # Print complete hyperblock summary with all attributes
     print("\nHyperblock Summary (Complete Bounds):")
@@ -585,11 +645,11 @@ def visualize_hyperblocks(df, features, class_col, hyperblocks, title="Hyperbloc
     for i, hb in enumerate(hyperblocks):
         print(f"{i+1:<3} {str(hb.dominant_class):<10} {hb.num_cases:<6} {hb.num_misclassified:<9}")
         
-        # Print bounds for each feature on separate lines for better readability
+        # Print bounds for each feature on separate lines
         for f in features:
             print(f"    {f}: [{hb.min_bounds[f]:.4f}, {hb.max_bounds[f]:.4f}]")
         
-        # Add a separator between hyperblocks for clarity
+        # Add a separator between hyperblocks
         if i < len(hyperblocks) - 1:
             print("-" * 50)
     
@@ -602,7 +662,7 @@ def main():
     df, features, class_col = load_and_normalize_data()
     
     # Generate hyperblocks using IMHyper (which combines IHyper and MHyper)
-    hyperblocks = imhyper_algorithm(df, class_col, purity_threshold=0.99, impurity_threshold=0.01)
+    hyperblocks = imhyper_algorithm(df, class_col, purity_threshold=0.9999, impurity_threshold=0.0001)
     
     # Visualize the results
     visualize_hyperblocks(df, features, class_col, hyperblocks, 
