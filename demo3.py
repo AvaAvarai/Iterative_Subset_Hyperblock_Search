@@ -975,22 +975,35 @@ def incremental_hyperblock_generation(df, features, class_col):
     output_dir = 'hyperblock_progression'
     os.makedirs(output_dir, exist_ok=True)
     
-    # Randomize the dataset
-    shuffled_df = df.sample(frac=1, random_state=42).reset_index(drop=True)
-    total_rows = len(shuffled_df)
+    # Set random seed for reproducibility
+    np.random.seed(42)
     
-    # Initial subset: 1/3 of the data
+    # Get total dataset size
+    total_rows = len(df)
+    
+    # Initial subset: 1/3 of the data selected completely randomly
     initial_subset_size = total_rows // 3
     
-    # Size of each increment (5% of initial dataset)
-    increment_size = int(total_rows * 0.025)
+    # Create random indices for initial subset
+    initial_indices = np.random.choice(df.index, size=initial_subset_size, replace=False)
+    current_df = df.loc[initial_indices].copy()
+    
+    # Create a master list of all indices in order of addition
+    all_ordered_indices = list(initial_indices)
+    
+    # Add remaining indices for future iterations (excluding already selected ones)
+    remaining_indices = [idx for idx in df.index if idx not in initial_indices]
+    np.random.shuffle(remaining_indices)  # Shuffle remaining indices
+    all_ordered_indices.extend(remaining_indices)
+    
+    # Size of each increment (2.5% of total dataset)
+    increment_size = int(total_rows * 0.05)
     
     # Prepare to track statistics
     stats_records = []
     
     # Start with the initial subset
     current_size = initial_subset_size
-    current_df = shuffled_df.iloc[:current_size].copy()
     
     # Calculate how many iterations we'll need
     remaining_rows = total_rows - current_size
@@ -1004,6 +1017,15 @@ def incremental_hyperblock_generation(df, features, class_col):
     iteration = 1
     previous_hyperblocks = None
     
+    # Create a color mapping to maintain consistent colors across iterations
+    # Estimate maximum number of hyperblocks we might create
+    max_possible_hbs = 20  # A reasonable upper limit
+    color_palette = plt.cm.tab20(np.linspace(0, 1, max_possible_hbs))
+    
+    # Track dominant classes from previous iterations to maintain color consistency
+    class_to_color_idx = {}
+    next_color_idx = 0
+    
     while current_size <= total_rows:
         percentage = current_size / total_rows * 100
         print(f"\n{'='*80}")
@@ -1012,6 +1034,14 @@ def incremental_hyperblock_generation(df, features, class_col):
         
         # Generate hyperblocks using the current subset
         hyperblocks = imhyper_algorithm(current_df, class_col, purity_threshold=0.9999, impurity_threshold=0.0001)
+        
+        # Update color mapping for new hyperblocks
+        for hb in hyperblocks:
+            # Use the combination of class and size as a rough identifier
+            hb_identifier = (hb.dominant_class, len(hb.points))
+            if hb_identifier not in class_to_color_idx:
+                class_to_color_idx[hb_identifier] = next_color_idx
+                next_color_idx = (next_color_idx + 1) % max_possible_hbs
         
         # Get statistics
         stats = get_hyperblock_statistics(hyperblocks, current_size)
@@ -1024,10 +1054,9 @@ def incremental_hyperblock_generation(df, features, class_col):
         misclassified_str = "N/A"  # Default for first iteration
         
         if iteration > 1 and previous_hyperblocks:
-            # Get the data points that were just added in this iteration
-            added_points_start = current_size - increment_size
-            added_points_end = current_size
-            added_points = shuffled_df.iloc[added_points_start:added_points_end]
+            # Get the indices of points just added in this iteration
+            added_indices = all_ordered_indices[current_size - increment_size:current_size]
+            added_points = df.loc[added_indices]
             
             # Count how many were misclassified by previous hyperblocks
             misclassified = 0
@@ -1049,35 +1078,112 @@ def incremental_hyperblock_generation(df, features, class_col):
         
         stats_records.append(stats)
         
-        # Visualize and save the figure
-        save_path = os.path.join(output_dir, f"hyperblocks_iteration_{iteration:02d}_{current_size}_rows.png")
-        visualize_hyperblocks(
-            current_df, features, class_col, hyperblocks,
-            title=f"IMHyper: Data with Hyperblock Visualization (Iteration {iteration}: {current_size}/{total_rows} rows)",
-            save_path=save_path
-        )
+        # Create proper, safe filename for saving the figure
+        # Use os.path.join for safe path construction and format numbers carefully
+        filename = f"hyperblocks_iter_{iteration:02d}_rows_{current_size}.png"
+        save_path = os.path.join(output_dir, filename)
+        
+        # Modified version of visualize_hyperblocks to use consistent colors
+        fig, ax = plt.subplots(figsize=(14, 8))
+        
+        # Set up the axes
+        x = list(range(len(features)))
+        
+        # Get unique classes for color mapping
+        unique_classes = df[class_col].unique()
+        class_colors = plt.cm.tab10(np.linspace(0, 1, len(unique_classes)))
+        class_color_map = dict(zip(unique_classes, class_colors))
+        
+        # Plot the data points first
+        for _, row in df.iterrows():
+            if row.name >= current_size:  # Skip points not in current iteration
+                continue
+            point_values = [row[feat] for feat in features]
+            point_class = row[class_col]
+            ax.plot(x, point_values, color=class_color_map[point_class], alpha=0.3, linewidth=0.8)
+        
+        # Plot each hyperblock using consistent colors
+        for i, hb in enumerate(hyperblocks):
+            # Get color based on class and approximate size
+            hb_identifier = (hb.dominant_class, len(hb.points))
+            color_idx = class_to_color_idx.get(hb_identifier, i % max_possible_hbs)
+            block_color = color_palette[color_idx]
+            
+            # Plot the hyperblock bounds as a shaded region
+            for j in range(len(features)-1):
+                # Get min and max values for current and next feature
+                y1_min = hb.min_bounds[features[j]]
+                y1_max = hb.max_bounds[features[j]]
+                y2_min = hb.min_bounds[features[j+1]]
+                y2_max = hb.max_bounds[features[j+1]]
+                
+                # Create polygon vertices for the shaded region
+                xs = [x[j], x[j], x[j+1], x[j+1]]
+                ys = [y1_min, y1_max, y2_max, y2_min]
+                
+                # Plot the polygon
+                ax.fill(xs, ys, alpha=0.2, color=block_color, edgecolor=block_color, 
+                       linewidth=1, label=f"HB {i+1} ({hb.dominant_class})" if j == 0 else None)
+        
+        # Add legends, set labels, etc.
+        class_legend_elements = [Line2D([0], [0], color=color, lw=2, label=f"Class {cls}")
+                               for cls, color in class_color_map.items()]
+        
+        ax.legend(title="Hyperblocks", loc='upper left', bbox_to_anchor=(1.05, 1), borderaxespad=0.)
+        ax.figure.legend(handles=class_legend_elements, title="Classes", 
+                        loc='upper left', bbox_to_anchor=(1.05, 0.5), borderaxespad=0.)
+        
+        ax.set_xticks(x)
+        ax.set_xticklabels(features, rotation=45)
+        ax.set_ylim(0, 1)
+        
+        # Calculate coverage
+        covered_count, coverage_percentage, _ = calculate_dataset_coverage(current_df, hyperblocks)
+        ax.set_title(f"IMHyper: Data with Hyperblock Visualization (Iteration {iteration}: {current_size}/{total_rows} rows)\n"
+                    f"Dataset Coverage: {covered_count}/{len(current_df)} points ({coverage_percentage:.2f}%)")
+        ax.grid(True, linestyle='--', alpha=0.7)
+        
+        plt.tight_layout()
+        plt.subplots_adjust(right=0.75)
+        
+        try:
+            plt.savefig(save_path, dpi=300, bbox_inches='tight')
+            print(f"Figure saved to: {save_path}")
+        except Exception as e:
+            print(f"Error saving figure: {e}")
+            # Try saving with an even simpler filename as fallback
+            fallback_path = os.path.join(output_dir, f"iter_{iteration}.png")
+            try:
+                plt.savefig(fallback_path, dpi=300, bbox_inches='tight')
+                print(f"Saved to fallback path: {fallback_path}")
+            except Exception as e2:
+                print(f"Could not save figure at all: {e2}")
+        
+        plt.close()
         
         # Save the current hyperblocks for next iteration
         previous_hyperblocks = hyperblocks
         
         # Add more data if not at the end
-        if next_size == current_size:
+        if next_size > current_size:
+            # Get indices for next batch
+            next_indices = all_ordered_indices[:next_size]
+            current_df = df.loc[next_indices].copy()
+            current_size = next_size
+            iteration += 1
+        else:
             break
-            
-        current_df = shuffled_df.iloc[:next_size].copy()
-        current_size = next_size
-        iteration += 1
     
     # Create a summary table
     print("\n\nSummary of Hyperblock Generation Progression:")
-    print("-" * 100)
+    print("-" * 80)
     print(f"{'Iter':<8} {'Rows':<12} {'%Total':<12} {'#HBs':<10} {'Avg Size':<15} {'Misclassified':<15}")
-    print("-" * 100)
+    print("-" * 80)
     
     for stats in stats_records:
         print(f"{stats['iteration']:<8} {stats['rows_processed']:<10} {stats['percentage_of_total']:>6.1f}%      {stats['total_hyperblocks']:<10} "
               f"{stats['avg_size']:>9.2f}        {stats['misclassifications']:<15}")
-    
+              
     # Plot progression statistics
     iterations = [stats['iteration'] for stats in stats_records]
     row_counts = [stats['rows_processed'] for stats in stats_records]
