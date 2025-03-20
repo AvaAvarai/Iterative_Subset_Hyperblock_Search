@@ -619,11 +619,6 @@ def visualize_hyperblocks(df, features, class_col, hyperblocks, title="Hyperbloc
     ax.set_title(f"{title}\nDataset Coverage: {covered_count}/{len(df)} points ({coverage_percentage:.2f}%)")
     ax.grid(True, linestyle='--', alpha=0.7)
     
-    # Print dataset coverage information
-    print("\nDataset Coverage Information:")
-    print("-" * 60)
-    print(f"Total data points: {len(df)}")
-    
     # Print complete hyperblock summary with all attributes
     print("\nHyperblock Summary (Complete Bounds):")
     print("-" * 100)
@@ -1075,13 +1070,13 @@ def incremental_hyperblock_generation(df, features, class_col):
     
     # Create a summary table
     print("\n\nSummary of Hyperblock Generation Progression:")
-    print("-" * 90)
-    print(f"{'Iter':<5} {'Rows':<7} {'%Total':<8} {'#HBs':<5} {'Avg Size':<10} {'Misclassified':<12}")
-    print("-" * 90)
+    print("-" * 100)
+    print(f"{'Iter':<8} {'Rows':<12} {'%Total':<12} {'#HBs':<10} {'Avg Size':<15} {'Misclassified':<15}")
+    print("-" * 100)
     
     for stats in stats_records:
-        print(f"{stats['iteration']:<5} {stats['rows_processed']:<7} {stats['percentage_of_total']:.1f}% {stats['total_hyperblocks']:<5} "
-              f"{stats['avg_size']:.2f} {stats['misclassifications']:<12}")
+        print(f"{stats['iteration']:<8} {stats['rows_processed']:<10} {stats['percentage_of_total']:>6.1f}%      {stats['total_hyperblocks']:<10} "
+              f"{stats['avg_size']:>9.2f}        {stats['misclassifications']:<15}")
     
     # Plot progression statistics
     iterations = [stats['iteration'] for stats in stats_records]
