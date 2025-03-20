@@ -978,26 +978,39 @@ def incremental_hyperblock_generation(df, features, class_col):
     output_dir = 'hyperblock_progression'
     os.makedirs(output_dir, exist_ok=True)
     
+    # Generate a unique run identifier
+    import time
+    import random
+    import string
+    
+    timestamp = time.strftime("%Y%m%d_%H%M%S")
+    random_suffix = ''.join(random.choices(string.ascii_lowercase, k=4))
+    run_id = f"{timestamp}_{random_suffix}"
+    
+    print(f"Run ID: {run_id}")
+    
+    # Create a subdirectory for this specific run
+    run_dir = os.path.join(output_dir, run_id)
+    os.makedirs(run_dir, exist_ok=True)
+    
     # Set random seed for reproducibility
     np.random.seed(42)
     
     # Get total dataset size
     total_rows = len(df)
     
-    # Initial subset: 1/3 of the data selected completely randomly
+    # Initial subset: take exactly 1/3 of the data as a completely random sample
     initial_subset_size = total_rows // 3
     
-    # Create random indices for initial subset
-    initial_indices = np.random.choice(df.index, size=initial_subset_size, replace=False)
+    # Create a fresh copy of the DataFrame and shuffle it completely
+    shuffled_indices = np.random.permutation(df.index)
+    
+    # Select initial subset from the shuffled indices
+    initial_indices = shuffled_indices[:initial_subset_size]
     current_df = df.loc[initial_indices].copy()
     
-    # Create a master list of all indices in order of addition
-    all_ordered_indices = list(initial_indices)
-    
-    # Add remaining indices for future iterations (excluding already selected ones)
-    remaining_indices = [idx for idx in df.index if idx not in initial_indices]
-    np.random.shuffle(remaining_indices)  # Shuffle remaining indices
-    all_ordered_indices.extend(remaining_indices)
+    # The rest of the indices will be used for incremental additions
+    remaining_indices = shuffled_indices[initial_subset_size:]
     
     # Size of each increment (2.5% of total dataset)
     increment_size = int(total_rows * 0.025)
@@ -1007,26 +1020,34 @@ def incremental_hyperblock_generation(df, features, class_col):
     
     # Start with the initial subset
     current_size = initial_subset_size
+    current_indices = list(initial_indices)
     
     # Calculate how many iterations we'll need
     remaining_rows = total_rows - current_size
     iterations = (remaining_rows + increment_size - 1) // increment_size + 1  # Ceiling division
     
     print(f"Starting with {current_size} rows ({current_size/total_rows*100:.1f}% of the dataset)")
+    print(f"Initial subset is a completely random sample")
     print(f"Will add {increment_size} rows at each step")
     print(f"Total {iterations} iterations needed to process all {total_rows} rows")
+    
+    # Save the sequence of indices for reproducibility
+    indices_file = os.path.join(run_dir, f"{run_id}_indices_sequence.txt")
+    with open(indices_file, 'w') as f:
+        f.write("Initial indices:\n")
+        f.write(",".join(map(str, initial_indices)) + "\n\n")
+        f.write("Remaining indices (in order of addition):\n")
+        f.write(",".join(map(str, remaining_indices)))
     
     # Initialize progress tracking
     iteration = 1
     previous_hyperblocks = None
     
     # Create a color mapping to maintain consistent colors across iterations
-    # Estimate maximum number of hyperblocks we might create
     max_possible_hbs = 20  # A reasonable upper limit
     color_palette = plt.cm.tab20(np.linspace(0, 1, max_possible_hbs))
     
     # Track hyperblocks from previous iterations to maintain color consistency
-    # Store as (centroid_vector, color_index)
     previous_centroids = []  # List of (centroid, color_idx) tuples
     
     # Function to find best color match based on hyperblock center proximity
@@ -1048,29 +1069,18 @@ def incremental_hyperblock_generation(df, features, class_col):
             # Calculate Euclidean distance between centroids
             distance = sum((a - b) ** 2 for a, b in zip(hb_centroid, prev_centroid)) ** 0.5
             
-            # If same class and closer than current best match
+            # If closer than current best match
             if distance < min_distance:
                 min_distance = distance
                 best_match_idx = idx
         
-        # If we found a close match (within threshold) and same class
+        # If we found a close match (within threshold)
         if min_distance < 0.2 and best_match_idx >= 0:
             # Use the color of the matching hyperblock
             return previous_centroids[best_match_idx][1]
         else:
             # No good match, assign new color
             return len(previous_centroids)
-    
-    # Generate a unique run identifier (timestamp + random string)
-    timestamp = time.strftime("%Y%m%d_%H%M%S")
-    random_suffix = ''.join(random.choices(string.ascii_lowercase, k=4))
-    run_id = f"{timestamp}_{random_suffix}"
-    
-    print(f"Run ID: {run_id}")
-    
-    # Create a subdirectory for this specific run
-    run_dir = os.path.join(output_dir, run_id)
-    os.makedirs(run_dir, exist_ok=True)
     
     while current_size <= total_rows:
         percentage = current_size / total_rows * 100
@@ -1122,25 +1132,36 @@ def incremental_hyperblock_generation(df, features, class_col):
         misclassified_str = "N/A"  # Default for first iteration
         
         if iteration > 1 and previous_hyperblocks:
-            # Get the indices of points just added in this iteration
-            added_indices = all_ordered_indices[current_size - increment_size:current_size]
-            added_points = df.loc[added_indices]
-            
-            # Count how many were misclassified by previous hyperblocks
-            misclassified = 0
-            for _, row in added_points.iterrows():
-                true_class = row[class_col]
-                predicted_class = classify_with_hyperblocks(row[features].values, previous_hyperblocks, features)
-                if predicted_class != true_class:
-                    misclassified += 1
-            
-            # Format as "X/Y" as requested
-            added_count = len(added_points)
-            misclassified_str = f"{misclassified}/{added_count}"
-            stats['misclassifications'] = misclassified_str
-            
-            print(f"Of the {added_count} points just added:")
-            print(f"  {misclassified} would be misclassified by the previous hyperblocks")
+            # Get the points that were just added in this iteration
+            if current_size <= len(remaining_indices) + initial_subset_size:
+                # Calculate start and end indices for the recently added points
+                start_idx = current_size - increment_size - initial_subset_size
+                end_idx = current_size - initial_subset_size
+                # Make sure we don't go out of bounds
+                start_idx = max(0, start_idx)
+                end_idx = min(len(remaining_indices), end_idx)
+                
+                # Get the indices of the recently added points
+                recently_added_indices = remaining_indices[start_idx:end_idx]
+                added_points = df.loc[recently_added_indices]
+                
+                # Count how many were misclassified by previous hyperblocks
+                misclassified = 0
+                for _, row in added_points.iterrows():
+                    true_class = row[class_col]
+                    predicted_class = classify_with_hyperblocks(row[features].values, previous_hyperblocks, features)
+                    if predicted_class != true_class:
+                        misclassified += 1
+                
+                # Format as "X/Y" as requested
+                added_count = len(added_points)
+                misclassified_str = f"{misclassified}/{added_count}"
+                stats['misclassifications'] = misclassified_str
+                
+                print(f"Of the {added_count} points just added:")
+                print(f"  {misclassified} would be misclassified by the previous hyperblocks")
+            else:
+                stats['misclassifications'] = "0/0"  # No points added in final iteration
         else:
             stats['misclassifications'] = misclassified_str
         
@@ -1162,9 +1183,8 @@ def incremental_hyperblock_generation(df, features, class_col):
         class_color_map = dict(zip(unique_classes, class_colors))
         
         # Plot the data points first
-        for _, row in df.iterrows():
-            if row.name >= current_size:  # Skip points not in current iteration
-                continue
+        for idx in current_indices:
+            row = df.loc[idx]
             point_values = [row[feat] for feat in features]
             point_class = row[class_col]
             ax.plot(x, point_values, color=class_color_map[point_class], alpha=0.3, linewidth=0.8)
@@ -1226,12 +1246,22 @@ def incremental_hyperblock_generation(df, features, class_col):
         previous_hyperblocks = hyperblocks
         
         # Add more data if not at the end
-        if next_size > current_size:
-            # Get indices for next batch
-            next_indices = all_ordered_indices[:next_size]
-            current_df = df.loc[next_indices].copy()
-            current_size = next_size
-            iteration += 1
+        if next_size > current_size and len(current_indices) < total_rows:
+            # Calculate how many indices to add
+            indices_to_add = next_size - current_size
+            # Get next batch of indices from remaining_indices
+            if current_size - initial_subset_size + indices_to_add <= len(remaining_indices):
+                next_batch_indices = remaining_indices[
+                    current_size - initial_subset_size:
+                    current_size - initial_subset_size + indices_to_add
+                ]
+                current_indices.extend(next_batch_indices)
+                current_df = df.loc[current_indices].copy()
+                current_size = len(current_indices)
+                iteration += 1
+            else:
+                # We've used all available indices
+                break
         else:
             break
     
