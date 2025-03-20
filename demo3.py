@@ -10,6 +10,9 @@ import tkinter as tk
 from tkinter import filedialog
 import re
 import os
+import time
+import random
+import string
 
 class Hyperblock:
     def __init__(self, min_bounds, max_bounds, points, dominant_class):
@@ -997,7 +1000,7 @@ def incremental_hyperblock_generation(df, features, class_col):
     all_ordered_indices.extend(remaining_indices)
     
     # Size of each increment (2.5% of total dataset)
-    increment_size = int(total_rows * 0.05)
+    increment_size = int(total_rows * 0.025)
     
     # Prepare to track statistics
     stats_records = []
@@ -1022,9 +1025,52 @@ def incremental_hyperblock_generation(df, features, class_col):
     max_possible_hbs = 20  # A reasonable upper limit
     color_palette = plt.cm.tab20(np.linspace(0, 1, max_possible_hbs))
     
-    # Track dominant classes from previous iterations to maintain color consistency
-    class_to_color_idx = {}
-    next_color_idx = 0
+    # Track hyperblocks from previous iterations to maintain color consistency
+    # Store as (centroid_vector, color_index)
+    previous_centroids = []  # List of (centroid, color_idx) tuples
+    
+    # Function to find best color match based on hyperblock center proximity
+    def find_best_color_match(hyperblock):
+        if not previous_centroids:
+            return len(previous_centroids)  # No previous blocks, return new index
+        
+        # Calculate centroid of this hyperblock
+        hb_centroid = []
+        for feat in features:
+            center = (hyperblock.min_bounds[feat] + hyperblock.max_bounds[feat]) / 2
+            hb_centroid.append(center)
+        
+        # Find closest previous centroid
+        min_distance = float('inf')
+        best_match_idx = -1
+        
+        for idx, (prev_centroid, color_idx) in enumerate(previous_centroids):
+            # Calculate Euclidean distance between centroids
+            distance = sum((a - b) ** 2 for a, b in zip(hb_centroid, prev_centroid)) ** 0.5
+            
+            # If same class and closer than current best match
+            if distance < min_distance:
+                min_distance = distance
+                best_match_idx = idx
+        
+        # If we found a close match (within threshold) and same class
+        if min_distance < 0.2 and best_match_idx >= 0:
+            # Use the color of the matching hyperblock
+            return previous_centroids[best_match_idx][1]
+        else:
+            # No good match, assign new color
+            return len(previous_centroids)
+    
+    # Generate a unique run identifier (timestamp + random string)
+    timestamp = time.strftime("%Y%m%d_%H%M%S")
+    random_suffix = ''.join(random.choices(string.ascii_lowercase, k=4))
+    run_id = f"{timestamp}_{random_suffix}"
+    
+    print(f"Run ID: {run_id}")
+    
+    # Create a subdirectory for this specific run
+    run_dir = os.path.join(output_dir, run_id)
+    os.makedirs(run_dir, exist_ok=True)
     
     while current_size <= total_rows:
         percentage = current_size / total_rows * 100
@@ -1035,13 +1081,35 @@ def incremental_hyperblock_generation(df, features, class_col):
         # Generate hyperblocks using the current subset
         hyperblocks = imhyper_algorithm(current_df, class_col, purity_threshold=0.9999, impurity_threshold=0.0001)
         
-        # Update color mapping for new hyperblocks
+        # Color assignment for this iteration's hyperblocks
+        hb_colors = []
+        new_centroids = []
+        
+        # Assign colors based on spatial similarity to previous hyperblocks
         for hb in hyperblocks:
-            # Use the combination of class and size as a rough identifier
-            hb_identifier = (hb.dominant_class, len(hb.points))
-            if hb_identifier not in class_to_color_idx:
-                class_to_color_idx[hb_identifier] = next_color_idx
-                next_color_idx = (next_color_idx + 1) % max_possible_hbs
+            # Calculate this hyperblock's centroid
+            hb_centroid = []
+            for feat in features:
+                center = (hb.min_bounds[feat] + hb.max_bounds[feat]) / 2
+                hb_centroid.append(center)
+            
+            # Find best color match
+            color_idx = find_best_color_match(hb)
+            
+            # If new color needed, add to previous centroids
+            if color_idx >= len(previous_centroids):
+                new_color_idx = color_idx % max_possible_hbs
+                previous_centroids.append((hb_centroid, new_color_idx))
+                hb_colors.append(new_color_idx)
+            else:
+                # Use existing color
+                hb_colors.append(previous_centroids[color_idx][1])
+            
+            # Update centroid list for next iteration
+            new_centroids.append((hb_centroid, hb_colors[-1]))
+        
+        # Update centroids for next iteration
+        previous_centroids = new_centroids
         
         # Get statistics
         stats = get_hyperblock_statistics(hyperblocks, current_size)
@@ -1078,10 +1146,9 @@ def incremental_hyperblock_generation(df, features, class_col):
         
         stats_records.append(stats)
         
-        # Create proper, safe filename for saving the figure
-        # Use os.path.join for safe path construction and format numbers carefully
-        filename = f"hyperblocks_iter_{iteration:02d}_rows_{current_size}.png"
-        save_path = os.path.join(output_dir, filename)
+        # Create proper, safe filename for saving the figure with unique identifiers
+        filename = f"{run_id}_iter_{iteration:02d}_rows_{current_size}.png"
+        save_path = os.path.join(run_dir, filename)
         
         # Modified version of visualize_hyperblocks to use consistent colors
         fig, ax = plt.subplots(figsize=(14, 8))
@@ -1102,12 +1169,9 @@ def incremental_hyperblock_generation(df, features, class_col):
             point_class = row[class_col]
             ax.plot(x, point_values, color=class_color_map[point_class], alpha=0.3, linewidth=0.8)
         
-        # Plot each hyperblock using consistent colors
+        # Plot each hyperblock using assigned colors
         for i, hb in enumerate(hyperblocks):
-            # Get color based on class and approximate size
-            hb_identifier = (hb.dominant_class, len(hb.points))
-            color_idx = class_to_color_idx.get(hb_identifier, i % max_possible_hbs)
-            block_color = color_palette[color_idx]
+            block_color = color_palette[hb_colors[i]]
             
             # Plot the hyperblock bounds as a shaded region
             for j in range(len(features)-1):
@@ -1152,12 +1216,9 @@ def incremental_hyperblock_generation(df, features, class_col):
         except Exception as e:
             print(f"Error saving figure: {e}")
             # Try saving with an even simpler filename as fallback
-            fallback_path = os.path.join(output_dir, f"iter_{iteration}.png")
-            try:
-                plt.savefig(fallback_path, dpi=300, bbox_inches='tight')
-                print(f"Saved to fallback path: {fallback_path}")
-            except Exception as e2:
-                print(f"Could not save figure at all: {e2}")
+            fallback_path = os.path.join(run_dir, f"{run_id}_iter_{iteration}.png")
+            plt.savefig(fallback_path, dpi=300, bbox_inches='tight')
+            print(f"Saved to fallback path: {fallback_path}")
         
         plt.close()
         
@@ -1224,10 +1285,30 @@ def incremental_hyperblock_generation(df, features, class_col):
     axs[1, 1].grid(True)
     
     plt.tight_layout()
-    plt.savefig(os.path.join(output_dir, 'hyperblock_statistics_summary.png'), dpi=300, bbox_inches='tight')
+    plt.savefig(os.path.join(run_dir, f"{run_id}_statistics_summary.png"), dpi=300, bbox_inches='tight')
     plt.close()  # Close the figure to free memory
     
-    print(f"\nAll visualizations saved to directory: {output_dir}")
+    # Save a summary text file with details about this run
+    summary_file = os.path.join(run_dir, f"{run_id}_summary.txt")
+    with open(summary_file, 'w') as f:
+        f.write(f"Hyperblock Generation Run: {run_id}\n")
+        f.write(f"Date and Time: {timestamp}\n")
+        f.write(f"Total Dataset Size: {total_rows}\n")
+        f.write(f"Initial Subset Size: {initial_subset_size}\n")
+        f.write(f"Increment Size: {increment_size}\n")
+        f.write(f"Total Iterations: {iterations}\n\n")
+        
+        f.write("Summary of Hyperblock Generation Progression:\n")
+        f.write("-" * 80 + "\n")
+        f.write(f"{'Iter':<8} {'Rows':<12} {'%Total':<12} {'#HBs':<10} {'Avg Size':<15} {'Misclassified':<15}\n")
+        f.write("-" * 80 + "\n")
+        
+        for stats in stats_records:
+            f.write(f"{stats['iteration']:<8} {stats['rows_processed']:<10} {stats['percentage_of_total']:>6.1f}%      {stats['total_hyperblocks']:<10} "
+                  f"{stats['avg_size']:>9.2f}        {stats['misclassifications']:<15}\n")
+    
+    print(f"\nAll visualizations and summary saved to directory: {run_dir}")
+    return run_dir  # Return the directory for this run
 
 def main():
     # Load and normalize data
