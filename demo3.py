@@ -1039,48 +1039,97 @@ def incremental_hyperblock_generation(df, features, class_col):
         f.write("Remaining indices (in order of addition):\n")
         f.write(",".join(map(str, remaining_indices)))
     
-    # Initialize progress tracking
+    # Create a fixed color palette - using a distinctive color set
+    color_palette = [
+        plt.cm.tab20(0),   # blue
+        plt.cm.tab20(2),   # green
+        plt.cm.tab20(4),   # red
+        plt.cm.tab20(6),   # purple
+        plt.cm.tab20(8),   # orange
+        plt.cm.tab20(10),  # yellow
+        plt.cm.tab20(12),  # teal
+        plt.cm.tab20(14),  # pink
+        plt.cm.tab20(16),  # light blue
+        plt.cm.tab20(18),  # light green
+        plt.cm.tab20(1),   # dark blue
+        plt.cm.tab20(3),   # dark green
+        plt.cm.tab20(5),   # dark red
+        plt.cm.tab20(7),   # dark purple
+        plt.cm.tab20(9),   # dark orange
+        plt.cm.tab20(11),  # dark yellow
+        plt.cm.tab20(13),  # dark teal
+        plt.cm.tab20(15),  # dark pink
+        plt.cm.tab20(17),  # medium blue
+        plt.cm.tab20(19),  # medium green
+    ]
+    
+    # Store ALL hyperblock centroids from ALL previous iterations with their colors
+    # Format: [(centroid_vector, class, color_index), ...]
+    all_previous_hbs = []
+    
+    # Function to calculate hyperblock centroid
+    def calculate_centroid(hb):
+        return [
+            (hb.min_bounds[feat] + hb.max_bounds[feat]) / 2
+            for feat in features
+        ]
+    
+    # Function to compute similarity between two hyperblocks using centroids
+    def compute_similarity(centroid1, centroid2):
+        return 1.0 / (1.0 + sum((a - b) ** 2 for a, b in zip(centroid1, centroid2)) ** 0.5)
+    
+    # Function to find best color match based on centroid similarity
+    def find_best_color_match(hb):
+        centroid = calculate_centroid(hb)
+        hb_class = hb.dominant_class
+        
+        if not all_previous_hbs:
+            # First hyperblock ever, assign first color
+            return 0, centroid
+        
+        # Find previously seen hyperblocks with same class
+        same_class_hbs = [(prev_centroid, color_idx) 
+                          for prev_centroid, prev_class, color_idx in all_previous_hbs 
+                          if prev_class == hb_class]
+        
+        if not same_class_hbs:
+            # First hyperblock of this class, find unused color
+            used_colors = set(color_idx for _, _, color_idx in all_previous_hbs)
+            for i in range(len(color_palette)):
+                if i not in used_colors:
+                    return i, centroid
+            # If all colors used, use the least used one
+            color_counts = {}
+            for _, _, c in all_previous_hbs:
+                color_counts[c] = color_counts.get(c, 0) + 1
+            least_used = min(color_counts.items(), key=lambda x: x[1])[0]
+            return least_used, centroid
+        
+        # Calculate similarity to all previous hyperblocks of same class
+        similarities = [(compute_similarity(centroid, prev_centroid), color_idx) 
+                        for prev_centroid, color_idx in same_class_hbs]
+        
+        # Return the color of the most similar hyperblock
+        best_match = max(similarities, key=lambda x: x[0])
+        # Only use this match if similarity is above threshold (0.7)
+        if best_match[0] > 0.7:
+            return best_match[1], centroid
+        
+        # Otherwise use a new color
+        used_colors = set(color_idx for _, _, color_idx in all_previous_hbs)
+        for i in range(len(color_palette)):
+            if i not in used_colors:
+                return i, centroid
+        
+        # If all colors used, use the least used one
+        color_counts = {}
+        for _, _, c in all_previous_hbs:
+            color_counts[c] = color_counts.get(c, 0) + 1
+        least_used = min(color_counts.items(), key=lambda x: x[1])[0]
+        return least_used, centroid
+    
     iteration = 1
     previous_hyperblocks = None
-    
-    # Create a color mapping to maintain consistent colors across iterations
-    max_possible_hbs = 20  # A reasonable upper limit
-    color_palette = plt.cm.tab20(np.linspace(0, 1, max_possible_hbs))
-    
-    # Track hyperblocks from previous iterations to maintain color consistency
-    previous_centroids = []  # List of (centroid, color_idx) tuples
-    
-    # Function to find best color match based on hyperblock center proximity
-    def find_best_color_match(hyperblock):
-        if not previous_centroids:
-            return len(previous_centroids)  # No previous blocks, return new index
-        
-        # Calculate centroid of this hyperblock
-        hb_centroid = []
-        for feat in features:
-            center = (hyperblock.min_bounds[feat] + hyperblock.max_bounds[feat]) / 2
-            hb_centroid.append(center)
-        
-        # Find closest previous centroid
-        min_distance = float('inf')
-        best_match_idx = -1
-        
-        for idx, (prev_centroid, color_idx) in enumerate(previous_centroids):
-            # Calculate Euclidean distance between centroids
-            distance = sum((a - b) ** 2 for a, b in zip(hb_centroid, prev_centroid)) ** 0.5
-            
-            # If closer than current best match
-            if distance < min_distance:
-                min_distance = distance
-                best_match_idx = idx
-        
-        # If we found a close match (within threshold)
-        if min_distance < 0.2 and best_match_idx >= 0:
-            # Use the color of the matching hyperblock
-            return previous_centroids[best_match_idx][1]
-        else:
-            # No good match, assign new color
-            return len(previous_centroids)
     
     while current_size <= total_rows:
         percentage = current_size / total_rows * 100
@@ -1091,35 +1140,16 @@ def incremental_hyperblock_generation(df, features, class_col):
         # Generate hyperblocks using the current subset
         hyperblocks = imhyper_algorithm(current_df, class_col, purity_threshold=0.9999, impurity_threshold=0.0001)
         
-        # Color assignment for this iteration's hyperblocks
+        # Sort hyperblocks by size (larger ones first) for more stable color assignment
+        hyperblocks.sort(key=lambda hb: hb.num_cases, reverse=True)
+        
+        # Assign colors based on similarity to previous hyperblocks
         hb_colors = []
-        new_centroids = []
-        
-        # Assign colors based on spatial similarity to previous hyperblocks
         for hb in hyperblocks:
-            # Calculate this hyperblock's centroid
-            hb_centroid = []
-            for feat in features:
-                center = (hb.min_bounds[feat] + hb.max_bounds[feat]) / 2
-                hb_centroid.append(center)
-            
-            # Find best color match
-            color_idx = find_best_color_match(hb)
-            
-            # If new color needed, add to previous centroids
-            if color_idx >= len(previous_centroids):
-                new_color_idx = color_idx % max_possible_hbs
-                previous_centroids.append((hb_centroid, new_color_idx))
-                hb_colors.append(new_color_idx)
-            else:
-                # Use existing color
-                hb_colors.append(previous_centroids[color_idx][1])
-            
-            # Update centroid list for next iteration
-            new_centroids.append((hb_centroid, hb_colors[-1]))
-        
-        # Update centroids for next iteration
-        previous_centroids = new_centroids
+            color_idx, centroid = find_best_color_match(hb)
+            hb_colors.append(color_idx)
+            # Add this hyperblock to our history
+            all_previous_hbs.append((centroid, hb.dominant_class, color_idx))
         
         # Get statistics
         stats = get_hyperblock_statistics(hyperblocks, current_size)
@@ -1189,9 +1219,17 @@ def incremental_hyperblock_generation(df, features, class_col):
             point_class = row[class_col]
             ax.plot(x, point_values, color=class_color_map[point_class], alpha=0.3, linewidth=0.8)
         
-        # Plot each hyperblock using assigned colors
+        # Create legend entries for hyperblocks
+        hyperblock_legend_entries = []
+        
+        # Plot each hyperblock using our assigned colors
         for i, hb in enumerate(hyperblocks):
             block_color = color_palette[hb_colors[i]]
+            
+            # Create legend entry
+            legend_entry = Line2D([0], [0], color=block_color, lw=4, 
+                                  label=f"HB {i+1} (Class {hb.dominant_class}, {hb.num_cases} pts)")
+            hyperblock_legend_entries.append(legend_entry)
             
             # Plot the hyperblock bounds as a shaded region
             for j in range(len(features)-1):
@@ -1206,14 +1244,15 @@ def incremental_hyperblock_generation(df, features, class_col):
                 ys = [y1_min, y1_max, y2_max, y2_min]
                 
                 # Plot the polygon
-                ax.fill(xs, ys, alpha=0.2, color=block_color, edgecolor=block_color, 
-                       linewidth=1, label=f"HB {i+1} ({hb.dominant_class})" if j == 0 else None)
+                ax.fill(xs, ys, alpha=0.2, color=block_color, edgecolor=block_color, linewidth=1)
         
-        # Add legends, set labels, etc.
+        # Add hyperblock legend
+        ax.legend(handles=hyperblock_legend_entries, title="Hyperblocks", 
+                 loc='upper left', bbox_to_anchor=(1.05, 1), borderaxespad=0.)
+        
+        # Add class legend
         class_legend_elements = [Line2D([0], [0], color=color, lw=2, label=f"Class {cls}")
                                for cls, color in class_color_map.items()]
-        
-        ax.legend(title="Hyperblocks", loc='upper left', bbox_to_anchor=(1.05, 1), borderaxespad=0.)
         ax.figure.legend(handles=class_legend_elements, title="Classes", 
                         loc='upper left', bbox_to_anchor=(1.05, 0.5), borderaxespad=0.)
         
