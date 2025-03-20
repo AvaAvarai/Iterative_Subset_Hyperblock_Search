@@ -623,20 +623,6 @@ def visualize_hyperblocks(df, features, class_col, hyperblocks, title="Hyperbloc
     print("\nDataset Coverage Information:")
     print("-" * 60)
     print(f"Total data points: {len(df)}")
-    print(f"Points covered by hyperblocks: {covered_count}")
-    print(f"Coverage percentage: {coverage_percentage:.2f}%")
-    
-    if uncovered_df is not None and not uncovered_df.empty:
-        print(f"Uncovered points: {len(uncovered_df)}")
-        
-        # Print class distribution of uncovered points
-        if class_col in uncovered_df.columns:
-            uncovered_class_counts = uncovered_df[class_col].value_counts()
-            print("\nUncovered points class distribution:")
-            for cls, count in uncovered_class_counts.items():
-                print(f"  Class {cls}: {count} points")
-    else:
-        print("All points are covered by hyperblocks!")
     
     # Print complete hyperblock summary with all attributes
     print("\nHyperblock Summary (Complete Bounds):")
@@ -1002,7 +988,7 @@ def incremental_hyperblock_generation(df, features, class_col):
     initial_subset_size = total_rows // 3
     
     # Size of each increment (5% of initial dataset)
-    increment_size = int(total_rows * 0.05)
+    increment_size = int(total_rows * 0.025)
     
     # Prepare to track statistics
     stats_records = []
@@ -1089,14 +1075,13 @@ def incremental_hyperblock_generation(df, features, class_col):
     
     # Create a summary table
     print("\n\nSummary of Hyperblock Generation Progression:")
-    print("-" * 110)
-    print(f"{'Iter':<5} {'Rows':<7} {'%Total':<8} {'#HBs':<5} {'Coverage%':<10} {'MisClass%':<10} {'Avg Size':<10} {'Misclassified':<12}")
-    print("-" * 110)
+    print("-" * 90)
+    print(f"{'Iter':<5} {'Rows':<7} {'%Total':<8} {'#HBs':<5} {'Avg Size':<10} {'Misclassified':<12}")
+    print("-" * 90)
     
     for stats in stats_records:
         print(f"{stats['iteration']:<5} {stats['rows_processed']:<7} {stats['percentage_of_total']:.1f}% {stats['total_hyperblocks']:<5} "
-              f"{stats['coverage_percentage']:.2f}% {stats['misclassification_rate']:.2f}% {stats['avg_size']:.2f} "
-              f"{stats['misclassifications']:<12}")
+              f"{stats['avg_size']:.2f} {stats['misclassifications']:<12}")
     
     # Plot progression statistics
     iterations = [stats['iteration'] for stats in stats_records]
