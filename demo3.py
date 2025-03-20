@@ -1207,28 +1207,28 @@ def incremental_hyperblock_generation(df, features, class_col):
         # Set up the axes
         x = list(range(len(features)))
         
-        # Get unique classes for color mapping
+        # Get unique classes for color mapping (for data points)
         unique_classes = df[class_col].unique()
         class_colors = plt.cm.tab10(np.linspace(0, 1, len(unique_classes)))
         class_color_map = dict(zip(unique_classes, class_colors))
         
-        # Plot the data points first
+        # Plot the data points first - still using class colors for the data points
         for idx in current_indices:
             row = df.loc[idx]
             point_values = [row[feat] for feat in features]
             point_class = row[class_col]
             ax.plot(x, point_values, color=class_color_map[point_class], alpha=0.3, linewidth=0.8)
         
-        # Create legend entries for hyperblocks
+        # Create legend entries for hyperblocks only
         hyperblock_legend_entries = []
         
         # Plot each hyperblock using our assigned colors
         for i, hb in enumerate(hyperblocks):
             block_color = color_palette[hb_colors[i]]
             
-            # Create legend entry
+            # Create legend entry with more detail
             legend_entry = Line2D([0], [0], color=block_color, lw=4, 
-                                  label=f"HB {i+1} (Class {hb.dominant_class}, {hb.num_cases} pts)")
+                                  label=f"HB {i+1}: Class {hb.dominant_class}, {hb.num_cases} points")
             hyperblock_legend_entries.append(legend_entry)
             
             # Plot the hyperblock bounds as a shaded region
@@ -1246,15 +1246,9 @@ def incremental_hyperblock_generation(df, features, class_col):
                 # Plot the polygon
                 ax.fill(xs, ys, alpha=0.2, color=block_color, edgecolor=block_color, linewidth=1)
         
-        # Add hyperblock legend
+        # Add only the hyperblock legend - positioned to the right of the plot
         ax.legend(handles=hyperblock_legend_entries, title="Hyperblocks", 
-                 loc='upper left', bbox_to_anchor=(1.05, 1), borderaxespad=0.)
-        
-        # Add class legend
-        class_legend_elements = [Line2D([0], [0], color=color, lw=2, label=f"Class {cls}")
-                               for cls, color in class_color_map.items()]
-        ax.figure.legend(handles=class_legend_elements, title="Classes", 
-                        loc='upper left', bbox_to_anchor=(1.05, 0.5), borderaxespad=0.)
+                 loc='center left', bbox_to_anchor=(1.05, 0.5), borderaxespad=0.)
         
         ax.set_xticks(x)
         ax.set_xticklabels(features, rotation=45)
@@ -1267,7 +1261,7 @@ def incremental_hyperblock_generation(df, features, class_col):
         ax.grid(True, linestyle='--', alpha=0.7)
         
         plt.tight_layout()
-        plt.subplots_adjust(right=0.75)
+        plt.subplots_adjust(right=0.75)  # Still need space for the hyperblock legend
         
         try:
             plt.savefig(save_path, dpi=300, bbox_inches='tight')
