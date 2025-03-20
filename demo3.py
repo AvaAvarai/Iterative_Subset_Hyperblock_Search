@@ -706,6 +706,281 @@ def get_hyperblock_statistics(hyperblocks, total_points):
         'avg_size': avg_size
     }
 
+def visualize_single_hyperblock(df, features, class_col, hyperblock, hb_index, total_hbs, save_path=None):
+    """
+    Visualize a single hyperblock in parallel coordinates.
+    
+    Args:
+        df: DataFrame containing the data
+        features: List of feature names
+        class_col: Name of the class column
+        hyperblock: A single Hyperblock object
+        hb_index: Index of this hyperblock
+        total_hbs: Total number of hyperblocks
+        save_path: Path to save the figure
+    """
+    # Create figure and axis
+    fig, ax = plt.subplots(figsize=(10, 6))
+    
+    # Set up the axes
+    x = list(range(len(features)))
+    
+    # Get unique classes for color mapping
+    unique_classes = df[class_col].unique()
+    colors = plt.cm.tab10(np.linspace(0, 1, len(unique_classes)))
+    class_color_map = dict(zip(unique_classes, colors))
+    
+    # Plot the background data points with low alpha
+    for _, row in df.iterrows():
+        point_values = [row[feat] for feat in features]
+        point_class = row[class_col]
+        ax.plot(x, point_values, color='gray', alpha=0.1, linewidth=0.5)
+    
+    # Generate a specific color for this hyperblock
+    block_color = plt.cm.tab20(hb_index / total_hbs)
+    
+    # Plot the hyperblock bounds as a shaded region
+    for j in range(len(features)-1):
+        # Get min and max values for current and next feature
+        y1_min = hyperblock.min_bounds[features[j]]
+        y1_max = hyperblock.max_bounds[features[j]]
+        y2_min = hyperblock.min_bounds[features[j+1]]
+        y2_max = hyperblock.max_bounds[features[j+1]]
+        
+        # Create polygon vertices for the shaded region
+        xs = [x[j], x[j], x[j+1], x[j+1]]
+        ys = [y1_min, y1_max, y2_max, y2_min]
+        
+        # Plot the polygon
+        ax.fill(xs, ys, alpha=0.3, color=block_color, edgecolor=block_color, linewidth=1)
+    
+    # Plot the points contained in this hyperblock with high alpha
+    for point in hyperblock.points:
+        # Extract feature values
+        point_values = point[:-1]  # Exclude the class value
+        point_class = point[-1]
+        ax.plot(x, point_values, color=class_color_map[point_class], alpha=0.8, linewidth=1)
+    
+    # Set the x-axis ticks and labels
+    ax.set_xticks(x)
+    ax.set_xticklabels(features, rotation=45)
+    ax.set_ylim(0, 1)  # Set y-axis from 0 to 1 (normalized data)
+    
+    # Set title
+    correct_points = hyperblock.num_cases - hyperblock.num_misclassified
+    ax.set_title(f"Hyperblock {hb_index+1}/{total_hbs}: Class {hyperblock.dominant_class}\n"
+                f"Contains {hyperblock.num_cases} points ({correct_points} correct, {hyperblock.num_misclassified} misclassified)")
+    
+    ax.grid(True, linestyle='--', alpha=0.7)
+    plt.tight_layout()
+    
+    # Save the figure if a path is provided
+    if save_path:
+        plt.savefig(save_path, dpi=300, bbox_inches='tight')
+    
+    plt.close()  # Close the figure to free memory
+    return save_path
+
+def create_final_hyperblocks_collage(df, features, class_col, hyperblocks, output_dir):
+    """
+    Creates a collage of individual hyperblock visualizations from the final iteration.
+    
+    Args:
+        df: DataFrame containing the data
+        features: List of feature names
+        class_col: Name of the class column
+        hyperblocks: List of Hyperblock objects from the final iteration
+        output_dir: Directory to save images
+    """
+    print("\nCreating individual hyperblock collage from final iteration...")
+    
+    # Create a subdirectory for individual hyperblock visualizations
+    individual_dir = os.path.join(output_dir, "individual_hyperblocks")
+    os.makedirs(individual_dir, exist_ok=True)
+    
+    # Generate individual hyperblock visualizations
+    image_paths = []
+    for i, hb in enumerate(hyperblocks):
+        save_path = os.path.join(individual_dir, f"hyperblock_{i+1}_class_{hb.dominant_class}.png")
+        visualize_single_hyperblock(df, features, class_col, hb, i, len(hyperblocks), save_path)
+        image_paths.append(save_path)
+    
+    # Determine grid size for the collage
+    num_hbs = len(hyperblocks)
+    cols = min(5, num_hbs)
+    rows = (num_hbs + cols - 1) // cols  # Ceiling division
+    
+    # Create collage figure
+    fig = plt.figure(figsize=(5*cols, 4*rows))
+    
+    # Add each hyperblock visualization to the collage
+    for i, img_path in enumerate(image_paths):
+        img = plt.imread(img_path)
+        
+        # Add subplot
+        ax = fig.add_subplot(rows, cols, i+1)
+        ax.imshow(img)
+        ax.axis('off')
+    
+    plt.tight_layout()
+    
+    # Save the collage
+    collage_path = os.path.join(output_dir, "final_hyperblocks_collage.png")
+    plt.savefig(collage_path, dpi=300, bbox_inches='tight')
+    plt.close()
+    
+    print(f"Final hyperblocks collage saved to: {collage_path}")
+    print(f"Individual hyperblock visualizations saved to: {individual_dir}")
+
+def create_hyperblock_bounds_collage(df, features, class_col, hyperblocks, output_dir):
+    """
+    Creates a collage with each hyperblock showing upper and lower bound polylines.
+    """
+    print("\nCreating hyperblock bounds collage...")
+    
+    # Determine grid size
+    n_blocks = len(hyperblocks)
+    cols = min(3, n_blocks)
+    rows = (n_blocks + cols - 1) // cols
+    
+    # Create figure
+    fig = plt.figure(figsize=(5*cols, 4*rows))
+    
+    # Create subplot for each hyperblock
+    for i, hb in enumerate(hyperblocks):
+        ax = plt.subplot(rows, cols, i+1)
+        
+        # X-values for features
+        x = range(len(features))
+        
+        # Get upper and lower bounds for this hyperblock
+        upper_bounds = [hb.max_bounds[feat] for feat in features]
+        lower_bounds = [hb.min_bounds[feat] for feat in features]
+        
+        # Plot data points in gray
+        for _, row in df.iterrows():
+            values = [row[feat] for feat in features]
+            plt.plot(x, values, color='gray', alpha=0.1, linewidth=0.5)
+        
+        # Plot the hyperblock UPPER bound in RED with thicker line
+        plt.plot(x, upper_bounds, 'r-', linewidth=3, label='Upper Bound')
+        
+        # Plot the hyperblock LOWER bound in BLUE with thicker line
+        plt.plot(x, lower_bounds, 'b-', linewidth=3, label='Lower Bound')
+        
+        # Set title
+        plt.title(f"Hyperblock {i+1} (Class {hb.dominant_class})")
+        
+        # Format axes
+        plt.xticks(x, features, rotation=45)
+        plt.ylim(0, 1)
+        plt.grid(True, alpha=0.3)
+        
+        # Add legend to first plot only
+        if i == 0:
+            plt.legend()
+    
+    plt.tight_layout()
+    
+    # Save the collage
+    collage_path = os.path.join(output_dir, "hyperblock_bounds_collage.png")
+    plt.savefig(collage_path, dpi=300, bbox_inches='tight')
+    plt.close()
+    
+    print(f"Hyperblock bounds collage saved to: {collage_path}")
+
+def visualize_hyperblocks_with_bounds(df, features, class_col, hyperblocks, output_dir):
+    """
+    Create a collage showing each hyperblock with:
+    1. The points IN the hyperblock drawn in GREEN
+    2. A RED line for the upper bound
+    3. A BLUE line for the lower bound
+    """
+    # Setup grid layout
+    n_blocks = len(hyperblocks)
+    cols = min(3, n_blocks)
+    rows = (n_blocks + cols - 1) // cols
+    
+    # Create figure
+    plt.figure(figsize=(15, 10))
+    
+    for i, hb in enumerate(hyperblocks):
+        # Create subplot
+        plt.subplot(rows, cols, i+1)
+        
+        # Get x positions for features
+        x = range(len(features))
+        
+        # Get the bounds for this hyperblock
+        upper_bounds = [hb.max_bounds[f] for f in features]
+        lower_bounds = [hb.min_bounds[f] for f in features]
+        
+        # 1. Draw points that are IN THIS HYPERBLOCK in green
+        for point in hb.points:
+            values = point[:-1]  # All except class
+            plt.plot(x, values, color='green', alpha=0.7, linewidth=1)
+        
+        # 2. Draw RED line for UPPER bound - thick and prominent
+        plt.plot(x, upper_bounds, 'r-', linewidth=3, label='Upper Bound')
+        
+        # 3. Draw BLUE line for LOWER bound - thick and prominent
+        plt.plot(x, lower_bounds, 'b-', linewidth=3, label='Lower Bound')
+        
+        # Title and formatting
+        plt.title(f"HB #{i+1}: Class {hb.dominant_class}\n{hb.num_cases} points")
+        plt.xticks(x, features, rotation=90)
+        plt.ylim(0, 1)
+        plt.grid(True, alpha=0.3)
+        
+        # Add legend to first plot
+        if i == 0:
+            plt.legend()
+    
+    plt.tight_layout()
+    plt.savefig(os.path.join(output_dir, 'hyperblock_bounds.png'), dpi=300)
+    plt.close()
+    
+    print(f"Saved hyperblock bounds visualization to {output_dir}/hyperblock_bounds.png")
+
+def classify_with_hyperblocks(point, hyperblocks, features):
+    """
+    Classify a point using the nearest hyperblock centroid.
+    
+    Args:
+        point: Data point to classify (array-like)
+        hyperblocks: List of Hyperblock objects
+        features: List of feature names
+    
+    Returns:
+        predicted_class: Predicted class label
+    """
+    if not hyperblocks:
+        return None
+        
+    min_distance = float('inf')
+    predicted_class = None
+    
+    # Extract feature values from the point (exclude class at the end if present)
+    if len(point) > len(features):
+        point_features = point[:len(features)]
+    else:
+        point_features = point
+        
+    # Calculate centroid for each hyperblock and find the nearest
+    for hb in hyperblocks:
+        # Calculate centroid (mean of min and max bounds)
+        centroid = [(hb.min_bounds[feat] + hb.max_bounds[feat]) / 2 for feat in features]
+        
+        # Calculate Euclidean distance
+        distance = sum((p - c) ** 2 for p, c in zip(point_features, centroid)) ** 0.5
+        
+        # Update if this is the nearest hyperblock
+        if distance < min_distance:
+            min_distance = distance
+            predicted_class = hb.dominant_class
+            
+    return predicted_class
+
 def incremental_hyperblock_generation(df, features, class_col):
     """
     Incrementally generate hyperblocks by gradually adding data.
@@ -746,6 +1021,7 @@ def incremental_hyperblock_generation(df, features, class_col):
     
     # Initialize progress tracking
     iteration = 1
+    previous_hyperblocks = None
     
     while current_size <= total_rows:
         percentage = current_size / total_rows * 100
@@ -761,6 +1037,35 @@ def incremental_hyperblock_generation(df, features, class_col):
         stats['iteration'] = iteration
         stats['rows_processed'] = current_size
         stats['percentage_of_total'] = percentage
+        
+        # Track misclassifications of next batch if not the first iteration
+        next_size = min(current_size + increment_size, total_rows)
+        misclassified_str = "N/A"  # Default for first iteration
+        
+        if iteration > 1 and previous_hyperblocks:
+            # Get the data points that were just added in this iteration
+            added_points_start = current_size - increment_size
+            added_points_end = current_size
+            added_points = shuffled_df.iloc[added_points_start:added_points_end]
+            
+            # Count how many were misclassified by previous hyperblocks
+            misclassified = 0
+            for _, row in added_points.iterrows():
+                true_class = row[class_col]
+                predicted_class = classify_with_hyperblocks(row[features].values, previous_hyperblocks, features)
+                if predicted_class != true_class:
+                    misclassified += 1
+            
+            # Format as "X/Y" as requested
+            added_count = len(added_points)
+            misclassified_str = f"{misclassified}/{added_count}"
+            stats['misclassifications'] = misclassified_str
+            
+            print(f"Of the {added_count} points just added:")
+            print(f"  {misclassified} would be misclassified by the previous hyperblocks")
+        else:
+            stats['misclassifications'] = misclassified_str
+        
         stats_records.append(stats)
         
         # Visualize and save the figure
@@ -771,8 +1076,10 @@ def incremental_hyperblock_generation(df, features, class_col):
             save_path=save_path
         )
         
+        # Save the current hyperblocks for next iteration
+        previous_hyperblocks = hyperblocks
+        
         # Add more data if not at the end
-        next_size = min(current_size + increment_size, total_rows)
         if next_size == current_size:
             break
             
@@ -782,13 +1089,14 @@ def incremental_hyperblock_generation(df, features, class_col):
     
     # Create a summary table
     print("\n\nSummary of Hyperblock Generation Progression:")
-    print("-" * 100)
-    print(f"{'Iter':<5} {'Rows':<7} {'%Total':<8} {'#HBs':<5} {'Coverage%':<10} {'MisClass%':<10} {'Avg Size':<10}")
-    print("-" * 100)
+    print("-" * 110)
+    print(f"{'Iter':<5} {'Rows':<7} {'%Total':<8} {'#HBs':<5} {'Coverage%':<10} {'MisClass%':<10} {'Avg Size':<10} {'Misclassified':<12}")
+    print("-" * 110)
     
     for stats in stats_records:
         print(f"{stats['iteration']:<5} {stats['rows_processed']:<7} {stats['percentage_of_total']:.1f}% {stats['total_hyperblocks']:<5} "
-              f"{stats['coverage_percentage']:.2f}% {stats['misclassification_rate']:.2f}% {stats['avg_size']:.2f}")
+              f"{stats['coverage_percentage']:.2f}% {stats['misclassification_rate']:.2f}% {stats['avg_size']:.2f} "
+              f"{stats['misclassifications']:<12}")
     
     # Plot progression statistics
     iterations = [stats['iteration'] for stats in stats_records]
@@ -831,8 +1139,6 @@ def incremental_hyperblock_generation(df, features, class_col):
     
     plt.tight_layout()
     plt.savefig(os.path.join(output_dir, 'hyperblock_statistics_summary.png'), dpi=300, bbox_inches='tight')
-    # Comment out plt.show() to avoid displaying the figure
-    # plt.show()
     plt.close()  # Close the figure to free memory
     
     print(f"\nAll visualizations saved to directory: {output_dir}")
@@ -841,8 +1147,68 @@ def main():
     # Load and normalize data
     df, features, class_col = load_and_normalize_data()
     
-    # Run the incremental hyperblock generation
+    # Run the analysis with incremental misclassification tracking
     incremental_hyperblock_generation(df, features, class_col)
+    
+    print("Analysis complete!")
+
+def create_hyperblock_collage(df, features, class_col):
+    """
+    Creates a collage with one visualization per hyperblock from the final iteration.
+    """
+    # Run the algorithm once more on the full dataset to get final hyperblocks
+    print("\nGenerating final hyperblocks for collage...")
+    hyperblocks = imhyper_algorithm(df, class_col, purity_threshold=0.9999, impurity_threshold=0.0001)
+    
+    # Create output directory
+    output_dir = 'hyperblock_collage'
+    os.makedirs(output_dir, exist_ok=True)
+    
+    # Determine grid size
+    n_blocks = len(hyperblocks)
+    cols = min(3, n_blocks)
+    rows = (n_blocks + cols - 1) // cols
+    
+    # Create a figure for the collage
+    plt.figure(figsize=(6*cols, 5*rows))
+    
+    # Create and add individual hyperblock plots
+    for i, hb in enumerate(hyperblocks):
+        # Create subplot
+        plt.subplot(rows, cols, i+1)
+        
+        # Plot all data points in gray
+        for _, row in df.iterrows():
+            values = [row[feat] for feat in features]
+            plt.plot(features, values, color='lightgray', alpha=0.2, linewidth=0.5)
+        
+        # Highlight points in this hyperblock
+        for point in hb.points:
+            # Get feature values (all except last which is class)
+            values = point[:-1]
+            # Get class
+            point_class = point[-1]
+            # Plot with color based on class
+            plt.plot(features, values, 
+                    color='green' if point_class == hb.dominant_class else 'red',
+                    alpha=0.7, linewidth=1)
+        
+        # Set title with hyperblock info
+        accuracy = (hb.num_cases - hb.num_misclassified) / hb.num_cases * 100
+        plt.title(f"HB #{i+1}: Class {hb.dominant_class}\n{hb.num_cases} points, {accuracy:.1f}% accuracy")
+        
+        # Adjust formatting
+        plt.xticks(rotation=45)
+        plt.grid(True, linestyle='--', alpha=0.3)
+    
+    plt.tight_layout()
+    
+    # Save the collage
+    collage_path = os.path.join(output_dir, "hyperblocks_collage.png")
+    plt.savefig(collage_path, dpi=300, bbox_inches='tight')
+    plt.close()
+    
+    print(f"Hyperblock collage saved to: {collage_path}")
 
 if __name__ == "__main__":
     main()
