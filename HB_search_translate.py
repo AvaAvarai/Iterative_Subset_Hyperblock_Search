@@ -1,3 +1,49 @@
+"""
+Hyperblock Search Algorithm
+--------------------------
+
+This program implements a hyperblock-based machine learning algorithm for creating pure, 
+axis-aligned hyperrectangular regions (hyperblocks) that capture patterns in data.
+
+The algorithm works by:
+1. Normalizing input data using min-max scaling
+2. Finding pure hyperblocks that contain points of only one class
+3. Merging compatible hyperblocks of the same class
+4. Ensuring all data points are assigned to a hyperblock
+
+Key Features:
+- Automatic hyperblock generation from labeled data
+- Purity-preserving hyperblock merging
+- Interactive dataset selection via GUI
+- Visualization of hyperblocks using parallel coordinates plots
+- Comprehensive validation and reporting
+
+Usage:
+    python hb_search_algo.py
+
+Required input:
+    CSV file with numeric features and a 'class' column (case-insensitive)
+
+Main components:
+    - HyperblockGenerator: Core algorithm implementation
+    - Hyperblock: Data structure for storing hyperblock information
+    - Visualization: Interactive parallel coordinates visualization using Plotly
+    - Data Loading: CSV parsing with automatic class column detection
+    - GUI: File selection dialog using tkinter
+
+Output:
+    - Interactive visualization of generated hyperblocks
+    - Detailed console output showing hyperblock properties
+    - Coverage verification ensuring all points are assigned
+    - Statistics about hyperblock purity and case distribution
+
+Dependencies:
+    - numpy
+    - pandas 
+    - plotly
+    - tkinter
+"""
+
 import pandas as pd
 import numpy as np
 from dataclasses import dataclass

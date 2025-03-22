@@ -1,3 +1,40 @@
+"""
+Hyperblock Visualization and Analysis Program
+------------------------------------------
+
+This program performs visual analytics and incremental data selection using hyperblock envelopes. 
+It analyzes datasets by creating pure clusters (hyperblocks) and incrementally adding data while 
+maintaining cluster purity.
+
+Key Features:
+- Loads and preprocesses data with Min-Max normalization
+- Creates hyperblock envelopes (pure clusters) for each class
+- Performs incremental data selection with purity checking
+- Visualizes results using parallel coordinates plots
+- Calculates and displays hyperblock areas and overlaps
+- Supports multiple trials with different random seeds
+- Generates detailed analysis reports and visualizations
+
+Usage:
+    python working_demo.py
+
+Required input file:
+    CSV file with numeric features and a 'class' column (case-insensitive)
+
+Main parameters (in main() function):
+    file_path: Path to input CSV file
+    random_seed: Random seed for reproducibility (default: 42) 
+    num_trials: Number of trials with different initial subsets (default: 100)
+    k: Initial subset size as 1/k of dataset (default: 3)
+    increment_percentage: Percentage of data to add per iteration (default: 0.05)
+
+Output:
+    - Detailed trial results table
+    - CSV file with trial results
+    - Visualizations of best trial results
+    - Hyperblock statistics and overlap analysis
+"""
+
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
