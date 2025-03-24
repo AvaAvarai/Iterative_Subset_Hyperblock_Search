@@ -2150,34 +2150,80 @@ def main():
     # Load and normalize data
     df, features, class_col = load_and_normalize_data()
     
-    # Get the number of rows to add/remove per iteration from the user
-    while True:
-        try:
-            rows_per_iteration = int(input("\nEnter the number of rows to add/remove per iteration: "))
-            if rows_per_iteration <= 0:
-                print("Please enter a positive number.")
-                continue
-            if rows_per_iteration >= len(df):
-                print("Please enter a number smaller than the total dataset size.")
-                continue
-            break
-        except ValueError:
-            print("Please enter a valid number.")
+    # Ask user which experiment to run
+    print("\nSelect experiment to run:")
+    print("1. Single run of incremental and decremental hyperblock generation")
+    print("2. Multiple seed experiment (misclassification distribution analysis)")
     
-    # Run the incremental analysis
-    if DEBUG:
-        print("\nRunning Incremental Hyperblock Generation...")
-    incremental_dir = incremental_hyperblock_generation(df, features, class_col, rows_per_iteration)
-    if DEBUG:
-        print(f"Incremental analysis results saved to: {incremental_dir}")
+    choice = input("Enter your choice (1 or 2): ")
     
-    # Run the decremental analysis
-    if DEBUG:
-        print("\nRunning Decremental Hyperblock Generation...")
-    decremental_dir = decremental_hyperblock_generation(df, features, class_col, rows_per_iteration)
-    if DEBUG:
-        print(f"Decremental analysis results saved to: {decremental_dir}")
+    if choice == "1":
+        # Get the number of rows to add/remove per iteration from the user
+        while True:
+            try:
+                rows_per_iteration = int(input("\nEnter the number of rows to add/remove per iteration: "))
+                if rows_per_iteration <= 0:
+                    print("Please enter a positive number.")
+                    continue
+                if rows_per_iteration >= len(df):
+                    print("Please enter a number smaller than the total dataset size.")
+                    continue
+                break
+            except ValueError:
+                print("Please enter a valid number.")
+        
+        # Run the incremental analysis
+        if DEBUG:
+            print("\nRunning Incremental Hyperblock Generation...")
+        incremental_dir = incremental_hyperblock_generation(df, features, class_col, rows_per_iteration)
+        if DEBUG:
+            print(f"Incremental analysis results saved to: {incremental_dir}")
+        
+        # Run the decremental analysis
+        if DEBUG:
+            print("\nRunning Decremental Hyperblock Generation...")
+        decremental_dir = decremental_hyperblock_generation(df, features, class_col, rows_per_iteration)
+        if DEBUG:
+            print(f"Decremental analysis results saved to: {decremental_dir}")
     
+    elif choice == "2":
+        # Get parameters for the multiple seed experiment
+        while True:
+            try:
+                rows_per_iteration = int(input("\nEnter the number of rows to add/remove per iteration: "))
+                if rows_per_iteration <= 0:
+                    print("Please enter a positive number.")
+                    continue
+                if rows_per_iteration >= len(df):
+                    print("Please enter a number smaller than the total dataset size.")
+                    continue
+                break
+            except ValueError:
+                print("Please enter a valid number.")
+        
+        while True:
+            try:
+                num_seeds = int(input("\nEnter the number of random seeds to use (1-1000, recommended 100): "))
+                if num_seeds <= 0:
+                    print("Please enter a positive number.")
+                    continue
+                if num_seeds > 1000:
+                    print("Warning: Using more than 1000 seeds may take a very long time.")
+                    confirm = input("Continue with more than 1000 seeds? (y/n): ")
+                    if confirm.lower() != 'y':
+                        continue
+                break
+            except ValueError:
+                print("Please enter a valid number.")
+        
+        # Run the multiple seed experiment
+        print(f"\nRunning multiple seed experiment with {num_seeds} seeds...")
+        output_dir = run_multiple_seed_experiment(df, features, class_col, rows_per_iteration, num_seeds)
+        print(f"Multiple seed experiment results saved to: {output_dir}")
+    
+    else:
+        print("Invalid choice. Exiting.")
+
 def create_hyperblock_collage(df, features, class_col):
     """
     Creates a collage with one visualization per hyperblock from the final iteration.
@@ -2300,6 +2346,390 @@ def mark_misclassified_points_in_hyperblocks(df, features, class_col, hyperblock
                      markeredgecolor='black', markeredgewidth=0.8,
                      label=f'Misclassified ({total_misclassified})')
     return None
+
+def run_multiple_seed_experiment(df, features, class_col, rows_per_iteration, num_seeds=1000):
+    """
+    Run the incremental and decremental hyperblock generation experiments with multiple random seeds
+    and create a visualization of misclassification distributions.
+    
+    Args:
+        df: DataFrame containing the data
+        features: List of feature names
+        class_col: Name of the class column
+        rows_per_iteration: Number of rows to add/remove per iteration
+        num_seeds: Number of different random seeds to use (default: 1000)
+    """
+    # Create output directory for results
+    output_dir = 'multiple_seed_experiment'
+    os.makedirs(output_dir, exist_ok=True)
+    
+    # Generate timestamp for this experiment run
+    timestamp = time.strftime("%Y%m%d_%H%M%S")
+    run_id = f"multiseed_{timestamp}"
+    
+    # Create specific output directory for this run
+    run_dir = os.path.join(output_dir, run_id)
+    os.makedirs(run_dir, exist_ok=True)
+    
+    if DEBUG:
+        print(f"\n{'='*80}")
+        print(f"Starting Multiple Seed Experiment with {num_seeds} seeds")
+        print(f"Output directory: {run_dir}")
+        print(f"{'='*80}")
+    
+    # Create data structures to store results
+    incremental_results = []
+    decremental_results = []
+    
+    # Calculate total dataset size and expected number of iterations
+    total_rows = len(df)
+    initial_subset_size = total_rows // 3
+    remaining_rows = total_rows - initial_subset_size
+    incremental_iterations = (remaining_rows + rows_per_iteration - 1) // rows_per_iteration + 1
+    
+    # For decremental, need to ensure we stop at minimum required samples
+    num_classes = len(df[class_col].unique())
+    min_samples_needed = num_classes + 1
+    max_removable = total_rows - min_samples_needed
+    decremental_iterations = (max_removable + rows_per_iteration - 1) // rows_per_iteration + 1
+    
+    if DEBUG:
+        print(f"Expected incremental iterations: {incremental_iterations}")
+        print(f"Expected decremental iterations: {decremental_iterations}")
+    
+    # Run experiments with multiple seeds
+    for seed_idx in range(num_seeds):
+        seed = seed_idx + 1  # Use seed values 1-1000 instead of 0-999
+        
+        if DEBUG and seed_idx % 10 == 0:
+            print(f"Processing seed {seed}/{num_seeds}...")
+        elif seed_idx % 100 == 0:
+            print(f"Processing seed {seed}/{num_seeds}...")
+        
+        # Set the random seed
+        np.random.seed(seed)
+        random.seed(seed)
+        
+        # Capture the original random state to restore between experiments
+        random_state = np.random.get_state()
+        
+        # Run incremental experiment and collect misclassification data
+        np.random.set_state(random_state)  # Reset random state for consistency
+        
+        # Create a modified version of incremental_hyperblock_generation that returns misclassification data
+        inc_misclass_data = []
+        
+        # Get fresh shuffled indices
+        shuffled_indices = np.random.permutation(df.index)
+        initial_indices = shuffled_indices[:initial_subset_size]
+        remaining_indices = shuffled_indices[initial_subset_size:]
+        
+        # Start with initial subset
+        current_size = initial_subset_size
+        current_indices = list(initial_indices)
+        current_df = df.loc[current_indices].copy()
+        
+        # Save initial hyperblocks
+        hyperblocks = imhyper_algorithm(current_df, class_col, purity_threshold=0.9999, impurity_threshold=0.0001)
+        previous_hyperblocks = hyperblocks
+        
+        # Track initial iteration (N/A misclassifications for first iteration)
+        inc_misclass_data.append({
+            'seed': seed,
+            'iteration': 1,
+            'rows': current_size,
+            'misclassified': 0,
+            'total_points': 0,
+            'misclass_rate': 0.0
+        })
+        
+        # Process iterations
+        iteration = 2  # Start from the second iteration
+        while current_size < total_rows:
+            next_size = min(current_size + rows_per_iteration, total_rows)
+            
+            # Calculate indices to add
+            start_pos = current_size - initial_subset_size
+            available_indices = len(remaining_indices) - start_pos
+            
+            if available_indices <= 0:
+                break
+                
+            # Use as many indices as available, up to the desired amount
+            actual_indices_to_add = min(rows_per_iteration, available_indices)
+            
+            next_batch_indices = remaining_indices[
+                start_pos:
+                start_pos + actual_indices_to_add
+            ]
+            
+            # Count misclassifications in the batch
+            misclassified = 0
+            for idx in next_batch_indices:
+                row = df.loc[idx]
+                true_class = row[class_col]
+                predicted_class = classify_with_hyperblocks(row[features].values, previous_hyperblocks, features)
+                if predicted_class != true_class:
+                    misclassified += 1
+            
+            # Save misclassification data
+            misclass_rate = misclassified / len(next_batch_indices) if len(next_batch_indices) > 0 else 0
+            inc_misclass_data.append({
+                'seed': seed,
+                'iteration': iteration,
+                'rows': current_size + actual_indices_to_add,
+                'misclassified': misclassified,
+                'total_points': len(next_batch_indices),
+                'misclass_rate': misclass_rate
+            })
+            
+            # Update for next iteration
+            current_indices.extend(next_batch_indices)
+            current_df = df.loc[current_indices].copy()
+            current_size = len(current_indices)
+            
+            # Generate new hyperblocks
+            hyperblocks = imhyper_algorithm(current_df, class_col, purity_threshold=0.9999, impurity_threshold=0.0001)
+            previous_hyperblocks = hyperblocks
+            
+            iteration += 1
+        
+        # Add to overall results
+        incremental_results.extend(inc_misclass_data)
+        
+        # Run decremental experiment and collect misclassification data
+        np.random.set_state(random_state)  # Reset random state for consistency
+        
+        # Create a modified version of decremental_hyperblock_generation that returns misclassification data
+        dec_misclass_data = []
+        
+        # Start with full dataset
+        current_size = total_rows
+        current_indices = list(df.index)
+        
+        # Save initial hyperblocks for decremental
+        hyperblocks = imhyper_algorithm(df.loc[current_indices], class_col, purity_threshold=0.9999, impurity_threshold=0.0001)
+        previous_hyperblocks = hyperblocks
+        
+        # Track initial iteration (N/A misclassifications for first iteration)
+        dec_misclass_data.append({
+            'seed': seed,
+            'iteration': 1,
+            'rows': current_size,
+            'misclassified': 0,
+            'total_points': 0,
+            'misclass_rate': 0.0
+        })
+        
+        # Process iterations
+        iteration = 2  # Start from the second iteration
+        while current_size > min_samples_needed:
+            # Calculate how many rows we can actually remove
+            max_to_remove = current_size - min_samples_needed
+            actual_rows_to_remove = min(rows_per_iteration, max_to_remove)
+            
+            if actual_rows_to_remove <= 0:
+                break
+                
+            # Randomly select indices to remove
+            indices_to_remove = np.random.choice(current_indices, size=actual_rows_to_remove, replace=False)
+            
+            # Count how many would be misclassified by current hyperblocks
+            misclassified = 0
+            for idx in indices_to_remove:
+                row = df.loc[idx]
+                true_class = row[class_col]
+                predicted_class = classify_with_hyperblocks(row[features].values, previous_hyperblocks, features)
+                if predicted_class != true_class:
+                    misclassified += 1
+            
+            # Save misclassification data
+            misclass_rate = misclassified / len(indices_to_remove) if len(indices_to_remove) > 0 else 0
+            dec_misclass_data.append({
+                'seed': seed,
+                'iteration': iteration,
+                'rows': current_size - actual_rows_to_remove,
+                'misclassified': misclassified,
+                'total_points': len(indices_to_remove),
+                'misclass_rate': misclass_rate
+            })
+            
+            # Update for next iteration
+            current_indices = [idx for idx in current_indices if idx not in indices_to_remove]
+            current_size = len(current_indices)
+            
+            # Generate new hyperblocks
+            hyperblocks = imhyper_algorithm(df.loc[current_indices], class_col, purity_threshold=0.9999, impurity_threshold=0.0001)
+            previous_hyperblocks = hyperblocks
+            
+            iteration += 1
+        
+        # Add to overall results
+        decremental_results.extend(dec_misclass_data)
+    
+    # Convert results to DataFrames
+    inc_df = pd.DataFrame(incremental_results)
+    dec_df = pd.DataFrame(decremental_results)
+    
+    # Save raw results
+    inc_df.to_csv(os.path.join(run_dir, f"{run_id}_incremental_results.csv"), index=False)
+    dec_df.to_csv(os.path.join(run_dir, f"{run_id}_decremental_results.csv"), index=False)
+    
+    # Create summary statistics by iteration
+    inc_summary = inc_df.groupby('iteration').agg({
+        'misclass_rate': ['mean', 'std', 'min', 'max', 'count'],
+        'misclassified': ['sum', 'mean'],
+        'total_points': ['sum', 'mean']
+    }).reset_index()
+    
+    dec_summary = dec_df.groupby('iteration').agg({
+        'misclass_rate': ['mean', 'std', 'min', 'max', 'count'],
+        'misclassified': ['sum', 'mean'],
+        'total_points': ['sum', 'mean']
+    }).reset_index()
+    
+    # Save summary statistics
+    inc_summary.to_csv(os.path.join(run_dir, f"{run_id}_incremental_summary.csv"))
+    dec_summary.to_csv(os.path.join(run_dir, f"{run_id}_decremental_summary.csv"))
+    
+    # Create visualization of misclassification distributions
+    plot_misclassification_distribution(inc_df, dec_df, run_dir, run_id)
+    
+    if DEBUG:
+        print(f"\nExperiment completed. Results saved to: {run_dir}")
+    
+    return run_dir
+
+def plot_misclassification_distribution(inc_df, dec_df, output_dir, run_id):
+    """
+    Create visualizations of misclassification distributions from multiple seed experiments.
+    
+    Args:
+        inc_df: DataFrame with incremental experiment results
+        dec_df: DataFrame with decremental experiment results
+        output_dir: Directory to save visualizations
+        run_id: Unique identifier for this experiment run
+    """
+    # Create a super plot with multiple visualizations
+    plt.figure(figsize=(20, 15))
+    
+    # 1. Boxplot of misclassification rates by iteration for incremental
+    plt.subplot(2, 2, 1)
+    iteration_data = [inc_df[inc_df['iteration'] == i]['misclass_rate'].values 
+                      for i in sorted(inc_df['iteration'].unique())]
+    plt.boxplot(iteration_data)
+    plt.title('Incremental Hyperblock Generation\nMisclassification Rate Distribution by Iteration')
+    plt.xlabel('Iteration')
+    plt.ylabel('Misclassification Rate')
+    plt.grid(True, alpha=0.3)
+    
+    # 2. Boxplot of misclassification rates by iteration for decremental
+    plt.subplot(2, 2, 2)
+    iteration_data = [dec_df[dec_df['iteration'] == i]['misclass_rate'].values 
+                      for i in sorted(dec_df['iteration'].unique())]
+    plt.boxplot(iteration_data)
+    plt.title('Decremental Hyperblock Generation\nMisclassification Rate Distribution by Iteration')
+    plt.xlabel('Iteration')
+    plt.ylabel('Misclassification Rate')
+    plt.grid(True, alpha=0.3)
+    
+    # 3. Heatmap showing distribution density for incremental
+    plt.subplot(2, 2, 3)
+    iterations = sorted(inc_df['iteration'].unique())
+    
+    # Create a 2D histogram
+    heatmap_data = np.zeros((len(iterations), 10))  # 10 bins from 0 to 1
+    for i, iteration in enumerate(iterations):
+        iter_data = inc_df[inc_df['iteration'] == iteration]['misclass_rate'].values
+        if len(iter_data) > 0:
+            hist, _ = np.histogram(iter_data, bins=10, range=(0, 1))
+            heatmap_data[i] = hist / len(iter_data)  # Normalize by count
+    
+    plt.imshow(heatmap_data, aspect='auto', cmap='viridis', origin='lower')
+    plt.colorbar(label='Density')
+    plt.title('Incremental Misclassification Rate Distribution Density')
+    plt.xlabel('Misclassification Rate Bin')
+    plt.ylabel('Iteration')
+    plt.yticks(range(len(iterations)), iterations)
+    plt.xticks(range(10), [f'{i/10:.1f}-{(i+1)/10:.1f}' for i in range(10)])
+    
+    # 4. Heatmap showing distribution density for decremental
+    plt.subplot(2, 2, 4)
+    iterations = sorted(dec_df['iteration'].unique())
+    
+    # Create a 2D histogram
+    heatmap_data = np.zeros((len(iterations), 10))  # 10 bins from 0 to 1
+    for i, iteration in enumerate(iterations):
+        iter_data = dec_df[dec_df['iteration'] == iteration]['misclass_rate'].values
+        if len(iter_data) > 0:
+            hist, _ = np.histogram(iter_data, bins=10, range=(0, 1))
+            heatmap_data[i] = hist / len(iter_data)  # Normalize by count
+    
+    plt.imshow(heatmap_data, aspect='auto', cmap='viridis', origin='lower')
+    plt.colorbar(label='Density')
+    plt.title('Decremental Misclassification Rate Distribution Density')
+    plt.xlabel('Misclassification Rate Bin')
+    plt.ylabel('Iteration')
+    plt.yticks(range(len(iterations)), iterations)
+    plt.xticks(range(10), [f'{i/10:.1f}-{(i+1)/10:.1f}' for i in range(10)])
+    
+    plt.tight_layout()
+    plt.savefig(os.path.join(output_dir, f"{run_id}_misclassification_distribution.png"), dpi=300, bbox_inches='tight')
+    
+    # Create violin plots for more detailed distribution visualization
+    plt.figure(figsize=(20, 10))
+    
+    # Violin plot for incremental
+    plt.subplot(1, 2, 1)
+    # Convert to long form data for seaborn
+    inc_data = []
+    for iteration in sorted(inc_df['iteration'].unique()):
+        for rate in inc_df[inc_df['iteration'] == iteration]['misclass_rate'].values:
+            inc_data.append({'Iteration': iteration, 'Misclassification Rate': rate})
+    inc_long_df = pd.DataFrame(inc_data)
+    
+    # Use seaborn for violin plot if available
+    try:
+        import seaborn as sns
+        sns.violinplot(x='Iteration', y='Misclassification Rate', data=inc_long_df)
+    except ImportError:
+        # Fallback to matplotlib violin plot
+        iteration_data = [inc_df[inc_df['iteration'] == i]['misclass_rate'].values 
+                        for i in sorted(inc_df['iteration'].unique())]
+        plt.violinplot(iteration_data, showmeans=True)
+        plt.xticks(range(1, len(sorted(inc_df['iteration'].unique()))+1), sorted(inc_df['iteration'].unique()))
+    
+    plt.title('Incremental Hyperblock Generation\nMisclassification Rate Distribution (Violin Plot)')
+    plt.grid(True, alpha=0.3)
+    
+    # Violin plot for decremental
+    plt.subplot(1, 2, 2)
+    # Convert to long form data for seaborn
+    dec_data = []
+    for iteration in sorted(dec_df['iteration'].unique()):
+        for rate in dec_df[dec_df['iteration'] == iteration]['misclass_rate'].values:
+            dec_data.append({'Iteration': iteration, 'Misclassification Rate': rate})
+    dec_long_df = pd.DataFrame(dec_data)
+    
+    # Use seaborn for violin plot if available
+    try:
+        import seaborn as sns
+        sns.violinplot(x='Iteration', y='Misclassification Rate', data=dec_long_df)
+    except ImportError:
+        # Fallback to matplotlib violin plot
+        iteration_data = [dec_df[dec_df['iteration'] == i]['misclass_rate'].values 
+                        for i in sorted(dec_df['iteration'].unique())]
+        plt.violinplot(iteration_data, showmeans=True)
+        plt.xticks(range(1, len(sorted(dec_df['iteration'].unique()))+1), sorted(dec_df['iteration'].unique()))
+    
+    plt.title('Decremental Hyperblock Generation\nMisclassification Rate Distribution (Violin Plot)')
+    plt.grid(True, alpha=0.3)
+    
+    plt.tight_layout()
+    plt.savefig(os.path.join(output_dir, f"{run_id}_violin_plots.png"), dpi=300, bbox_inches='tight')
+    
+    if DEBUG:
+        print(f"Distribution plots saved to {output_dir}")
 
 if __name__ == "__main__":
     main()
