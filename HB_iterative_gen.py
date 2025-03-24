@@ -14,6 +14,9 @@ import time
 import random
 import string
 
+# Debug mode control - set to False to suppress debug prints
+DEBUG = False
+
 class Hyperblock:
     def __init__(self, min_bounds, max_bounds, points, dominant_class):
         self.min_bounds = min_bounds
@@ -72,9 +75,10 @@ def load_and_normalize_data(file_path=None):
     scaler = MinMaxScaler()
     df[features] = scaler.fit_transform(df[features])
     
-    print(f"Loaded dataset with {len(df)} samples, {len(features)} features")
-    print(f"Class column: {class_col}")
-    print(f"Features: {', '.join(features)}")
+    if DEBUG:
+        print(f"Loaded dataset with {len(df)} samples, {len(features)} features")
+        print(f"Class column: {class_col}")
+        print(f"Features: {', '.join(features)}")
     
     return df, features, class_col
 
@@ -90,7 +94,8 @@ def ihyper_algorithm(df, class_col, purity_threshold=0.95):
     Returns:
         List of Hyperblock objects
     """
-    print(f"Running IHyper algorithm with purity threshold = {purity_threshold}")
+    if DEBUG:
+        print(f"Running IHyper algorithm with purity threshold = {purity_threshold}")
     
     # Extract features and class
     attributes = [col for col in df.columns if col != class_col]
@@ -114,7 +119,8 @@ def ihyper_algorithm(df, class_col, purity_threshold=0.95):
     iteration = 0
     while remaining_points and iteration < 100:  # Limit iterations to prevent infinite loop
         iteration += 1
-        print(f"  IHyper iteration {iteration}, {len(remaining_points)} points remaining")
+        if DEBUG:
+            print(f"  IHyper iteration {iteration}, {len(remaining_points)} points remaining")
         
         best_interval = None
         best_interval_size = 0
@@ -215,7 +221,8 @@ def ihyper_algorithm(df, class_col, purity_threshold=0.95):
         # Step 9-10: Select the attribute with the largest interval and create hyperblock
         if best_interval is None:
             # No more pure intervals can be found
-            print("  No more pure intervals can be found, stopping IHyper")
+            if DEBUG:
+                print("  No more pure intervals can be found, stopping IHyper")
             break
         
         # Create hyperblock from best interval
@@ -239,12 +246,14 @@ def ihyper_algorithm(df, class_col, purity_threshold=0.95):
         hyperblock = Hyperblock(min_bounds, max_bounds, points_in_hb, dominant_class)
         hyperblocks.append(hyperblock)
         
-        print(f"  Created hyperblock with {len(best_points_indices)} points, dominant class: {dominant_class}")
+        if DEBUG:
+            print(f"  Created hyperblock with {len(best_points_indices)} points, dominant class: {dominant_class}")
         
         # Step 11: Remove points in hyperblock from remaining_points
         remaining_points -= set(best_points_indices)
     
-    print(f"IHyper created {len(hyperblocks)} hyperblocks")
+    if DEBUG:
+        print(f"IHyper created {len(hyperblocks)} hyperblocks")
     return hyperblocks
 
 def mhyper_algorithm(df, class_col, impurity_threshold=0.1):
@@ -259,7 +268,8 @@ def mhyper_algorithm(df, class_col, impurity_threshold=0.1):
     Returns:
         List of Hyperblock objects
     """
-    print(f"Running MHyper algorithm with impurity threshold = {impurity_threshold}")
+    if DEBUG:
+        print(f"Running MHyper algorithm with impurity threshold = {impurity_threshold}")
     
     attributes = [col for col in df.columns if col != class_col]
     
@@ -281,7 +291,8 @@ def mhyper_algorithm(df, class_col, impurity_threshold=0.1):
         }
         hyperblocks.append(hb)
     
-    print(f"  Initialized {len(hyperblocks)} single-point hyperblocks")
+    if DEBUG:
+        print(f"  Initialized {len(hyperblocks)} single-point hyperblocks")
     
     # Steps 2-5: Merge pure hyperblocks
     remaining_hbs = list(range(len(hyperblocks)))
@@ -360,7 +371,8 @@ def mhyper_algorithm(df, class_col, impurity_threshold=0.1):
         # If we couldn't merge hb_x with anything, add it to result
         result_hbs.append(hb_x)
     
-    print(f"  Completed {pure_merges} pure merges, resulting in {len(result_hbs)} pure hyperblocks")
+    if DEBUG:
+        print(f"  Completed {pure_merges} pure merges, resulting in {len(result_hbs)} pure hyperblocks")
     
     # Step 6-9: Merge hyperblocks with limited impurity
     # Continue as long as we can find valid merges
@@ -444,7 +456,8 @@ def mhyper_algorithm(df, class_col, impurity_threshold=0.1):
         result_hbs.append(joint_hb)
         impure_merges += 1
     
-    print(f"  Completed {impure_merges} impure merges")
+    if DEBUG:
+        print(f"  Completed {impure_merges} impure merges")
     
     # Convert to Hyperblock objects
     hyperblocks = []
@@ -454,7 +467,8 @@ def mhyper_algorithm(df, class_col, impurity_threshold=0.1):
         hb_obj = Hyperblock(hb['min_bounds'], hb['max_bounds'], points, hb['class'])
         hyperblocks.append(hb_obj)
     
-    print(f"MHyper created {len(hyperblocks)} hyperblocks")
+    if DEBUG:
+        print(f"MHyper created {len(hyperblocks)} hyperblocks")
     return hyperblocks
 
 def imhyper_algorithm(df, class_col, purity_threshold=0.95, impurity_threshold=0.1):
@@ -470,7 +484,8 @@ def imhyper_algorithm(df, class_col, purity_threshold=0.95, impurity_threshold=0
     Returns:
         List of Hyperblock objects
     """
-    print(f"Running IMHyper algorithm (purity: {purity_threshold}, impurity: {impurity_threshold})")
+    if DEBUG:
+        print(f"Running IMHyper algorithm (purity: {purity_threshold}, impurity: {impurity_threshold})")
     
     # Step 1: Run IHyper algorithm
     ihyper_blocks = ihyper_algorithm(df, class_col, purity_threshold)
@@ -489,7 +504,8 @@ def imhyper_algorithm(df, class_col, purity_threshold=0.95, impurity_threshold=0
     
     # If all points are covered, return just the IHyper blocks
     if not remaining_tuples:
-        print("All points covered by IHyper, skipping MHyper")
+        if DEBUG:
+            print("All points covered by IHyper, skipping MHyper")
         return ihyper_blocks
     
     # Create DataFrame with remaining points
@@ -499,14 +515,16 @@ def imhyper_algorithm(df, class_col, purity_threshold=0.95, impurity_threshold=0
             remaining_rows.append(row)
     
     remaining_df = pd.DataFrame(remaining_rows, columns=df.columns)
-    print(f"IHyper left {len(remaining_df)} points uncovered, running MHyper on them")
+    if DEBUG:
+        print(f"IHyper left {len(remaining_df)} points uncovered, running MHyper on them")
     
     # Step 3: Run MHyper on remaining points
     mhyper_blocks = mhyper_algorithm(remaining_df, class_col, impurity_threshold)
     
     # Combine results
     all_blocks = ihyper_blocks + mhyper_blocks
-    print(f"IMHyper created a total of {len(all_blocks)} hyperblocks")
+    if DEBUG:
+        print(f"IMHyper created a total of {len(all_blocks)} hyperblocks")
     return all_blocks
 
 def calculate_dataset_coverage(df, hyperblocks):
@@ -622,7 +640,7 @@ def visualize_hyperblocks(df, features, class_col, hyperblocks, title="Hyperbloc
     ax.set_title(f"{title}\nDataset Coverage: {covered_count}/{len(df)} points ({coverage_percentage:.2f}%)")
     ax.grid(True, linestyle='--', alpha=0.7)
     
-    # Print complete hyperblock summary with all attributes
+    # Print complete hyperblock summary with all attributes - this is a summary table that should always print
     print("\nHyperblock Summary (Complete Bounds):")
     print("-" * 100)
     print(f"{'#':<3} {'Class':<10} {'Cases':<6} {'Misclass':<9} {'Bounds'}")
@@ -645,7 +663,8 @@ def visualize_hyperblocks(df, features, class_col, hyperblocks, title="Hyperbloc
     # Save the figure if a path is provided
     if save_path:
         plt.savefig(save_path, dpi=300, bbox_inches='tight')
-        print(f"Figure saved to: {save_path}")
+        if DEBUG:
+            print(f"Figure saved to: {save_path}")
     
     # Comment out plt.show() to avoid displaying the figure
     # plt.show()
@@ -776,7 +795,8 @@ def create_final_hyperblocks_collage(df, features, class_col, hyperblocks, outpu
         hyperblocks: List of Hyperblock objects from the final iteration
         output_dir: Directory to save images
     """
-    print("\nCreating individual hyperblock collage from final iteration...")
+    if DEBUG:
+        print("\nCreating individual hyperblock collage from final iteration...")
     
     # Create a subdirectory for individual hyperblock visualizations
     individual_dir = os.path.join(output_dir, "individual_hyperblocks")
@@ -813,14 +833,16 @@ def create_final_hyperblocks_collage(df, features, class_col, hyperblocks, outpu
     plt.savefig(collage_path, dpi=300, bbox_inches='tight')
     plt.close()
     
-    print(f"Final hyperblocks collage saved to: {collage_path}")
-    print(f"Individual hyperblock visualizations saved to: {individual_dir}")
+    if DEBUG:
+        print(f"Final hyperblocks collage saved to: {collage_path}")
+        print(f"Individual hyperblock visualizations saved to: {individual_dir}")
 
 def create_hyperblock_bounds_collage(df, features, class_col, hyperblocks, output_dir):
     """
     Creates a collage with each hyperblock showing upper and lower bound polylines.
     """
-    print("\nCreating hyperblock bounds collage...")
+    if DEBUG:
+        print("\nCreating hyperblock bounds collage...")
     
     # Determine grid size
     n_blocks = len(hyperblocks)
@@ -871,7 +893,8 @@ def create_hyperblock_bounds_collage(df, features, class_col, hyperblocks, outpu
     plt.savefig(collage_path, dpi=300, bbox_inches='tight')
     plt.close()
     
-    print(f"Hyperblock bounds collage saved to: {collage_path}")
+    if DEBUG:
+        print(f"Hyperblock bounds collage saved to: {collage_path}")
 
 def visualize_hyperblocks_with_bounds(df, features, class_col, hyperblocks, output_dir):
     """
@@ -924,7 +947,8 @@ def visualize_hyperblocks_with_bounds(df, features, class_col, hyperblocks, outp
     plt.savefig(os.path.join(output_dir, 'hyperblock_bounds.png'), dpi=300)
     plt.close()
     
-    print(f"Saved hyperblock bounds visualization to {output_dir}/hyperblock_bounds.png")
+    if DEBUG:
+        print(f"Saved hyperblock bounds visualization to {output_dir}/hyperblock_bounds.png")
 
 def classify_with_hyperblocks(point, hyperblocks, features):
     """
@@ -988,7 +1012,8 @@ def incremental_hyperblock_generation(df, features, class_col, rows_per_iteratio
     random_suffix = ''.join(random.choices(string.ascii_lowercase, k=4))
     run_id = f"{timestamp}_{random_suffix}"
     
-    print(f"Run ID: {run_id}")
+    if DEBUG:
+        print(f"Run ID: {run_id}")
     
     # Create a subdirectory for this specific run
     run_dir = os.path.join(output_dir, run_id)
@@ -1024,10 +1049,11 @@ def incremental_hyperblock_generation(df, features, class_col, rows_per_iteratio
     remaining_rows = total_rows - current_size
     iterations = (remaining_rows + rows_per_iteration - 1) // rows_per_iteration + 1  # Ceiling division
     
-    print(f"Starting with {current_size} rows ({current_size/total_rows*100:.1f}% of the dataset)")
-    print(f"Initial subset is a completely random sample")
-    print(f"Will add {rows_per_iteration} rows at each step")
-    print(f"Total {iterations} iterations needed to process all {total_rows} rows")
+    if DEBUG:
+        print(f"Starting with {current_size} rows ({current_size/total_rows*100:.1f}% of the dataset)")
+        print(f"Initial subset is a completely random sample")
+        print(f"Will add {rows_per_iteration} rows at each step")
+        print(f"Total {iterations} iterations needed to process all {total_rows} rows")
     
     # Save the sequence of indices for reproducibility
     indices_file = os.path.join(run_dir, f"{run_id}_indices_sequence.txt")
@@ -1131,9 +1157,10 @@ def incremental_hyperblock_generation(df, features, class_col, rows_per_iteratio
     
     while current_size <= total_rows:
         percentage = current_size / total_rows * 100
-        print(f"\n{'='*80}")
-        print(f"Iteration {iteration}/{iterations}: Processing {current_size} rows ({percentage:.1f}% of the dataset)")
-        print(f"{'='*80}")
+        if DEBUG:
+            print(f"\n{'='*80}")
+            print(f"Iteration {iteration}/{iterations}: Processing {current_size} rows ({percentage:.1f}% of the dataset)")
+            print(f"{'='*80}")
         
         # Generate hyperblocks using the current subset
         hyperblocks = imhyper_algorithm(current_df, class_col, purity_threshold=0.9999, impurity_threshold=0.0001)
@@ -1186,8 +1213,9 @@ def incremental_hyperblock_generation(df, features, class_col, rows_per_iteratio
                 misclassified_str = f"{misclassified}/{added_count}"
                 stats['misclassifications'] = misclassified_str
                 
-                print(f"Of the {added_count} points just added:")
-                print(f"  {misclassified} would be misclassified by the previous hyperblocks")
+                if DEBUG:
+                    print(f"Of the {added_count} points just added:")
+                    print(f"  {misclassified} would be misclassified by the previous hyperblocks")
             else:
                 stats['misclassifications'] = "0/0"  # No points added in final iteration
         else:
@@ -1263,13 +1291,16 @@ def incremental_hyperblock_generation(df, features, class_col, rows_per_iteratio
         
         try:
             plt.savefig(save_path, dpi=300, bbox_inches='tight')
-            print(f"Figure saved to: {save_path}")
+            if DEBUG:
+                print(f"Figure saved to: {save_path}")
         except Exception as e:
-            print(f"Error saving figure: {e}")
+            if DEBUG:
+                print(f"Error saving figure: {e}")
             # Try saving with an even simpler filename as fallback
             fallback_path = os.path.join(run_dir, f"{run_id}_iter_{iteration}.png")
             plt.savefig(fallback_path, dpi=300, bbox_inches='tight')
-            print(f"Saved to fallback path: {fallback_path}")
+            if DEBUG:
+                print(f"Saved to fallback path: {fallback_path}")
         
         plt.close()
         
@@ -1368,7 +1399,8 @@ def incremental_hyperblock_generation(df, features, class_col, rows_per_iteratio
             f.write(f"{stats['iteration']:<8} {stats['rows_processed']:<10} {stats['percentage_of_total']:>6.1f}%      {stats['total_hyperblocks']:<10} "
                   f"{stats['avg_size']:>9.2f}        {stats['misclassifications']:<15}\n")
     
-    print(f"\nAll visualizations and summary saved to directory: {run_dir}")
+    if DEBUG:
+        print(f"\nAll visualizations and summary saved to directory: {run_dir}")
     return run_dir  # Return the directory for this run
 
 def decremental_hyperblock_generation(df, features, class_col, rows_per_iteration):
@@ -1394,10 +1426,11 @@ def decremental_hyperblock_generation(df, features, class_col, rows_per_iteratio
     random_suffix = ''.join(random.choices(string.ascii_lowercase, k=4))
     run_id = f"decremental_{timestamp}_{random_suffix}"
     
-    print(f"\n{'='*80}")
-    print(f"Starting Decremental Hyperblock Generation")
-    print(f"Run ID: {run_id}")
-    print(f"{'='*80}")
+    if DEBUG:
+        print(f"\n{'='*80}")
+        print(f"Starting Decremental Hyperblock Generation")
+        print(f"Run ID: {run_id}")
+        print(f"{'='*80}")
     
     # Create a subdirectory for this specific run
     run_dir = os.path.join(output_dir, run_id)
@@ -1411,8 +1444,9 @@ def decremental_hyperblock_generation(df, features, class_col, rows_per_iteratio
     num_classes = len(df[class_col].unique())
     min_samples_needed = num_classes + 1  # Need at least one more sample than classes
     
-    print(f"Number of unique classes: {num_classes}")
-    print(f"Minimum samples needed: {min_samples_needed}")
+    if DEBUG:
+        print(f"Number of unique classes: {num_classes}")
+        print(f"Minimum samples needed: {min_samples_needed}")
     
     # Prepare to track statistics
     stats_records = []
@@ -1424,9 +1458,10 @@ def decremental_hyperblock_generation(df, features, class_col, rows_per_iteratio
     # Calculate how many iterations we'll need
     iterations = (total_rows - min_samples_needed) // rows_per_iteration + 1  # Ceiling division
     
-    print(f"Starting with {current_size} rows (100% of the dataset)")
-    print(f"Will remove {rows_per_iteration} rows at each step")
-    print(f"Total {iterations} iterations needed (will stop at {min_samples_needed} samples)")
+    if DEBUG:
+        print(f"Starting with {current_size} rows (100% of the dataset)")
+        print(f"Will remove {rows_per_iteration} rows at each step")
+        print(f"Total {iterations} iterations needed (will stop at {min_samples_needed} samples)")
     
     # Save the sequence of indices for reproducibility
     indices_file = os.path.join(run_dir, f"{run_id}_indices_sequence.txt")
@@ -1527,9 +1562,10 @@ def decremental_hyperblock_generation(df, features, class_col, rows_per_iteratio
     
     while current_size > min_samples_needed:  # Changed condition to ensure we have enough samples
         percentage = current_size / total_rows * 100
-        print(f"\n{'='*80}")
-        print(f"Iteration {iteration}/{iterations}: Processing {current_size} rows ({percentage:.1f}% of the dataset)")
-        print(f"{'='*80}")
+        if DEBUG:
+            print(f"\n{'='*80}")
+            print(f"Iteration {iteration}/{iterations}: Processing {current_size} rows ({percentage:.1f}% of the dataset)")
+            print(f"{'='*80}")
         
         # Generate hyperblocks using the current subset
         hyperblocks = imhyper_algorithm(df.loc[current_indices], class_col, purity_threshold=0.9999, impurity_threshold=0.0001)
@@ -1573,8 +1609,9 @@ def decremental_hyperblock_generation(df, features, class_col, rows_per_iteratio
             misclassified_str = f"{misclassified}/{removed_count}"
             stats['misclassifications'] = misclassified_str
             
-            print(f"Of the {removed_count} points to be removed:")
-            print(f"  {misclassified} would be misclassified by the current hyperblocks")
+            if DEBUG:
+                print(f"Of the {removed_count} points to be removed:")
+                print(f"  {misclassified} would be misclassified by the current hyperblocks")
         else:
             stats['misclassifications'] = misclassified_str
         
@@ -1648,13 +1685,16 @@ def decremental_hyperblock_generation(df, features, class_col, rows_per_iteratio
         
         try:
             plt.savefig(save_path, dpi=300, bbox_inches='tight')
-            print(f"Figure saved to: {save_path}")
+            if DEBUG:
+                print(f"Figure saved to: {save_path}")
         except Exception as e:
-            print(f"Error saving figure: {e}")
+            if DEBUG:
+                print(f"Error saving figure: {e}")
             # Try saving with an even simpler filename as fallback
             fallback_path = os.path.join(run_dir, f"{run_id}_iter_{iteration}.png")
             plt.savefig(fallback_path, dpi=300, bbox_inches='tight')
-            print(f"Saved to fallback path: {fallback_path}")
+            if DEBUG:
+                print(f"Saved to fallback path: {fallback_path}")
         
         plt.close()
         
@@ -1670,10 +1710,11 @@ def decremental_hyperblock_generation(df, features, class_col, rows_per_iteratio
             current_size = len(current_indices)
             iteration += 1
         else:
-            print(f"\nStopping at {current_size} samples (minimum required: {min_samples_needed})")
+            if DEBUG:
+                print(f"\nStopping at {current_size} samples (minimum required: {min_samples_needed})")
             break
     
-    # Create a summary table
+    # Create a summary table - this should always print
     print("\n\nSummary of Decremental Hyperblock Generation Progression:")
     print("-" * 80)
     print(f"{'Iter':<8} {'Rows':<12} {'%Total':<12} {'#HBs':<10} {'Avg Size':<15} {'Misclassified':<15}")
@@ -1746,7 +1787,8 @@ def decremental_hyperblock_generation(df, features, class_col, rows_per_iteratio
             f.write(f"{stats['iteration']:<8} {stats['rows_processed']:<10} {stats['percentage_of_total']:>6.1f}%      {stats['total_hyperblocks']:<10} "
                   f"{stats['avg_size']:>9.2f}        {stats['misclassifications']:<15}\n")
     
-    print(f"\nAll visualizations and summary saved to directory: {run_dir}")
+    if DEBUG:
+        print(f"\nAll visualizations and summary saved to directory: {run_dir}")
     return run_dir  # Return the directory for this run
 
 def main():
@@ -1768,23 +1810,26 @@ def main():
             print("Please enter a valid number.")
     
     # Run the incremental analysis
-    print("\nRunning Incremental Hyperblock Generation...")
+    if DEBUG:
+        print("\nRunning Incremental Hyperblock Generation...")
     incremental_dir = incremental_hyperblock_generation(df, features, class_col, rows_per_iteration)
-    print(f"Incremental analysis results saved to: {incremental_dir}")
+    if DEBUG:
+        print(f"Incremental analysis results saved to: {incremental_dir}")
     
     # Run the decremental analysis
-    print("\nRunning Decremental Hyperblock Generation...")
+    if DEBUG:
+        print("\nRunning Decremental Hyperblock Generation...")
     decremental_dir = decremental_hyperblock_generation(df, features, class_col, rows_per_iteration)
-    print(f"Decremental analysis results saved to: {decremental_dir}")
+    if DEBUG:
+        print(f"Decremental analysis results saved to: {decremental_dir}")
     
-    print("\nAll analyses complete!")
-
 def create_hyperblock_collage(df, features, class_col):
     """
     Creates a collage with one visualization per hyperblock from the final iteration.
     """
     # Run the algorithm once more on the full dataset to get final hyperblocks
-    print("\nGenerating final hyperblocks for collage...")
+    if DEBUG:
+        print("\nGenerating final hyperblocks for collage...")
     hyperblocks = imhyper_algorithm(df, class_col, purity_threshold=0.9999, impurity_threshold=0.0001)
     
     # Create output directory
@@ -1835,7 +1880,8 @@ def create_hyperblock_collage(df, features, class_col):
     plt.savefig(collage_path, dpi=300, bbox_inches='tight')
     plt.close()
     
-    print(f"Hyperblock collage saved to: {collage_path}")
+    if DEBUG:
+        print(f"Hyperblock collage saved to: {collage_path}")
 
 if __name__ == "__main__":
     main()
