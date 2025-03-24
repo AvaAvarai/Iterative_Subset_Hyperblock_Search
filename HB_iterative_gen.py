@@ -965,7 +965,7 @@ def classify_with_hyperblocks(point, hyperblocks, features):
             
     return predicted_class
 
-def incremental_hyperblock_generation(df, features, class_col):
+def incremental_hyperblock_generation(df, features, class_col, rows_per_iteration):
     """
     Incrementally generate hyperblocks by gradually adding data.
     
@@ -973,6 +973,7 @@ def incremental_hyperblock_generation(df, features, class_col):
         df: DataFrame containing the data
         features: List of feature names
         class_col: Name of the class column
+        rows_per_iteration: Number of rows to add in each iteration
     """
     # Create output directory for images
     output_dir = 'hyperblock_progression'
@@ -1012,9 +1013,6 @@ def incremental_hyperblock_generation(df, features, class_col):
     # The rest of the indices will be used for incremental additions
     remaining_indices = shuffled_indices[initial_subset_size:]
     
-    # Size of each increment (2.5% of total dataset)
-    increment_size = int(total_rows * 0.025)
-    
     # Prepare to track statistics
     stats_records = []
     
@@ -1024,11 +1022,11 @@ def incremental_hyperblock_generation(df, features, class_col):
     
     # Calculate how many iterations we'll need
     remaining_rows = total_rows - current_size
-    iterations = (remaining_rows + increment_size - 1) // increment_size + 1  # Ceiling division
+    iterations = (remaining_rows + rows_per_iteration - 1) // rows_per_iteration + 1  # Ceiling division
     
     print(f"Starting with {current_size} rows ({current_size/total_rows*100:.1f}% of the dataset)")
     print(f"Initial subset is a completely random sample")
-    print(f"Will add {increment_size} rows at each step")
+    print(f"Will add {rows_per_iteration} rows at each step")
     print(f"Total {iterations} iterations needed to process all {total_rows} rows")
     
     # Save the sequence of indices for reproducibility
@@ -1158,14 +1156,14 @@ def incremental_hyperblock_generation(df, features, class_col):
         stats['percentage_of_total'] = percentage
         
         # Track misclassifications of next batch if not the first iteration
-        next_size = min(current_size + increment_size, total_rows)
+        next_size = min(current_size + rows_per_iteration, total_rows)
         misclassified_str = "N/A"  # Default for first iteration
         
         if iteration > 1 and previous_hyperblocks:
             # Get the points that were just added in this iteration
             if current_size <= len(remaining_indices) + initial_subset_size:
                 # Calculate start and end indices for the recently added points
-                start_idx = current_size - increment_size - initial_subset_size
+                start_idx = current_size - rows_per_iteration - initial_subset_size
                 end_idx = current_size - initial_subset_size
                 # Make sure we don't go out of bounds
                 start_idx = max(0, start_idx)
@@ -1358,7 +1356,7 @@ def incremental_hyperblock_generation(df, features, class_col):
         f.write(f"Date and Time: {timestamp}\n")
         f.write(f"Total Dataset Size: {total_rows}\n")
         f.write(f"Initial Subset Size: {initial_subset_size}\n")
-        f.write(f"Increment Size: {increment_size}\n")
+        f.write(f"Increment Size: {rows_per_iteration}\n")
         f.write(f"Total Iterations: {iterations}\n\n")
         
         f.write("Summary of Hyperblock Generation Progression:\n")
@@ -1373,7 +1371,7 @@ def incremental_hyperblock_generation(df, features, class_col):
     print(f"\nAll visualizations and summary saved to directory: {run_dir}")
     return run_dir  # Return the directory for this run
 
-def decremental_hyperblock_generation(df, features, class_col):
+def decremental_hyperblock_generation(df, features, class_col, rows_per_iteration):
     """
     Decrementally generate hyperblocks by gradually removing data.
     
@@ -1381,6 +1379,7 @@ def decremental_hyperblock_generation(df, features, class_col):
         df: DataFrame containing the data
         features: List of feature names
         class_col: Name of the class column
+        rows_per_iteration: Number of rows to remove in each iteration
     """
     # Create output directory for images
     output_dir = 'hyperblock_progression'
@@ -1410,9 +1409,6 @@ def decremental_hyperblock_generation(df, features, class_col):
     # Get total dataset size
     total_rows = len(df)
     
-    # Size of each decrement (2.5% of total dataset)
-    decrement_size = int(total_rows * 0.025)
-    
     # Prepare to track statistics
     stats_records = []
     
@@ -1421,10 +1417,10 @@ def decremental_hyperblock_generation(df, features, class_col):
     current_indices = list(df.index)
     
     # Calculate how many iterations we'll need
-    iterations = (total_rows - decrement_size) // decrement_size + 1  # Ceiling division
+    iterations = (total_rows - rows_per_iteration) // rows_per_iteration + 1  # Ceiling division
     
     print(f"Starting with {current_size} rows (100% of the dataset)")
-    print(f"Will remove {decrement_size} rows at each step")
+    print(f"Will remove {rows_per_iteration} rows at each step")
     print(f"Total {iterations} iterations needed")
     
     # Save the sequence of indices for reproducibility
@@ -1524,7 +1520,7 @@ def decremental_hyperblock_generation(df, features, class_col):
     iteration = 1
     previous_hyperblocks = None
     
-    while current_size >= decrement_size:  # Changed from > to >= to include the last iteration
+    while current_size >= rows_per_iteration:  # Changed from > to >= to include the last iteration
         percentage = current_size / total_rows * 100
         print(f"\n{'='*80}")
         print(f"Iteration {iteration}/{iterations}: Processing {current_size} rows ({percentage:.1f}% of the dataset)")
@@ -1551,12 +1547,12 @@ def decremental_hyperblock_generation(df, features, class_col):
         stats['percentage_of_total'] = percentage
         
         # Track misclassifications of removed batch if not the first iteration
-        next_size = current_size - decrement_size
+        next_size = current_size - rows_per_iteration
         misclassified_str = "N/A"  # Default for first iteration
         
         if iteration > 1 and previous_hyperblocks:
             # Get the points that will be removed in the next iteration
-            removed_indices = current_indices[-decrement_size:]
+            removed_indices = current_indices[-rows_per_iteration:]
             removed_points = df.loc[removed_indices]
             
             # Count how many would be misclassified by current hyperblocks
@@ -1662,8 +1658,10 @@ def decremental_hyperblock_generation(df, features, class_col):
         
         # Remove data for next iteration
         if next_size > 0:
-            # Remove the last decrement_size indices
-            current_indices = current_indices[:-decrement_size]
+            # Randomly select indices to remove
+            indices_to_remove = np.random.choice(current_indices, size=rows_per_iteration, replace=False)
+            # Remove the selected indices
+            current_indices = [idx for idx in current_indices if idx not in indices_to_remove]
             current_size = len(current_indices)
             iteration += 1
         else:
@@ -1728,7 +1726,7 @@ def decremental_hyperblock_generation(df, features, class_col):
         f.write(f"Decremental Hyperblock Generation Run: {run_id}\n")
         f.write(f"Date and Time: {timestamp}\n")
         f.write(f"Total Dataset Size: {total_rows}\n")
-        f.write(f"Decrement Size: {decrement_size}\n")
+        f.write(f"Decrement Size: {rows_per_iteration}\n")
         f.write(f"Total Iterations: {iterations}\n\n")
         
         f.write("Summary of Hyperblock Generation Progression:\n")
@@ -1747,14 +1745,28 @@ def main():
     # Load and normalize data
     df, features, class_col = load_and_normalize_data()
     
+    # Get the number of rows to add/remove per iteration from the user
+    while True:
+        try:
+            rows_per_iteration = int(input("\nEnter the number of rows to add/remove per iteration: "))
+            if rows_per_iteration <= 0:
+                print("Please enter a positive number.")
+                continue
+            if rows_per_iteration >= len(df):
+                print("Please enter a number smaller than the total dataset size.")
+                continue
+            break
+        except ValueError:
+            print("Please enter a valid number.")
+    
     # Run the incremental analysis
     print("\nRunning Incremental Hyperblock Generation...")
-    incremental_dir = incremental_hyperblock_generation(df, features, class_col)
+    incremental_dir = incremental_hyperblock_generation(df, features, class_col, rows_per_iteration)
     print(f"Incremental analysis results saved to: {incremental_dir}")
     
     # Run the decremental analysis
     print("\nRunning Decremental Hyperblock Generation...")
-    decremental_dir = decremental_hyperblock_generation(df, features, class_col)
+    decremental_dir = decremental_hyperblock_generation(df, features, class_col, rows_per_iteration)
     print(f"Decremental analysis results saved to: {decremental_dir}")
     
     print("\nAll analyses complete!")
