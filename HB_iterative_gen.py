@@ -1406,8 +1406,13 @@ def decremental_hyperblock_generation(df, features, class_col, rows_per_iteratio
     # Set random seed for reproducibility
     np.random.seed(42)
     
-    # Get total dataset size
+    # Get total dataset size and number of unique classes
     total_rows = len(df)
+    num_classes = len(df[class_col].unique())
+    min_samples_needed = num_classes + 1  # Need at least one more sample than classes
+    
+    print(f"Number of unique classes: {num_classes}")
+    print(f"Minimum samples needed: {min_samples_needed}")
     
     # Prepare to track statistics
     stats_records = []
@@ -1417,11 +1422,11 @@ def decremental_hyperblock_generation(df, features, class_col, rows_per_iteratio
     current_indices = list(df.index)
     
     # Calculate how many iterations we'll need
-    iterations = (total_rows - rows_per_iteration) // rows_per_iteration + 1  # Ceiling division
+    iterations = (total_rows - min_samples_needed) // rows_per_iteration + 1  # Ceiling division
     
     print(f"Starting with {current_size} rows (100% of the dataset)")
     print(f"Will remove {rows_per_iteration} rows at each step")
-    print(f"Total {iterations} iterations needed")
+    print(f"Total {iterations} iterations needed (will stop at {min_samples_needed} samples)")
     
     # Save the sequence of indices for reproducibility
     indices_file = os.path.join(run_dir, f"{run_id}_indices_sequence.txt")
@@ -1520,7 +1525,7 @@ def decremental_hyperblock_generation(df, features, class_col, rows_per_iteratio
     iteration = 1
     previous_hyperblocks = None
     
-    while current_size >= rows_per_iteration:  # Changed from > to >= to include the last iteration
+    while current_size > min_samples_needed:  # Changed condition to ensure we have enough samples
         percentage = current_size / total_rows * 100
         print(f"\n{'='*80}")
         print(f"Iteration {iteration}/{iterations}: Processing {current_size} rows ({percentage:.1f}% of the dataset)")
@@ -1657,7 +1662,7 @@ def decremental_hyperblock_generation(df, features, class_col, rows_per_iteratio
         previous_hyperblocks = hyperblocks
         
         # Remove data for next iteration
-        if next_size > 0:
+        if next_size > min_samples_needed:  # Only remove if we'll still have enough samples
             # Randomly select indices to remove
             indices_to_remove = np.random.choice(current_indices, size=rows_per_iteration, replace=False)
             # Remove the selected indices
@@ -1665,6 +1670,7 @@ def decremental_hyperblock_generation(df, features, class_col, rows_per_iteratio
             current_size = len(current_indices)
             iteration += 1
         else:
+            print(f"\nStopping at {current_size} samples (minimum required: {min_samples_needed})")
             break
     
     # Create a summary table
@@ -1726,6 +1732,8 @@ def decremental_hyperblock_generation(df, features, class_col, rows_per_iteratio
         f.write(f"Decremental Hyperblock Generation Run: {run_id}\n")
         f.write(f"Date and Time: {timestamp}\n")
         f.write(f"Total Dataset Size: {total_rows}\n")
+        f.write(f"Number of Classes: {num_classes}\n")
+        f.write(f"Minimum Samples Required: {min_samples_needed}\n")
         f.write(f"Decrement Size: {rows_per_iteration}\n")
         f.write(f"Total Iterations: {iterations}\n\n")
         
