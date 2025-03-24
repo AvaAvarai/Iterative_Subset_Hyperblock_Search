@@ -1524,7 +1524,7 @@ def decremental_hyperblock_generation(df, features, class_col):
     iteration = 1
     previous_hyperblocks = None
     
-    while current_size > decrement_size:
+    while current_size >= decrement_size:  # Changed from > to >= to include the last iteration
         percentage = current_size / total_rows * 100
         print(f"\n{'='*80}")
         print(f"Iteration {iteration}/{iterations}: Processing {current_size} rows ({percentage:.1f}% of the dataset)")
