@@ -762,7 +762,16 @@ def visualize_single_hyperblock(df, features, class_col, hyperblock, hb_index, t
         # Extract feature values
         point_values = point[:-1]  # Exclude the class value
         point_class = point[-1]
-        ax.plot(x, point_values, color=class_color_map[point_class], alpha=0.8, linewidth=1)
+        
+        # Determine if this point is misclassified
+        is_misclassified = point_class != hyperblock.dominant_class
+        
+        # Draw misclassified points in bright red, correctly classified points in their class color
+        if is_misclassified:
+            ax.plot(x, point_values, color='#FF0000', alpha=1.0, linewidth=3.0, zorder=3, 
+                  marker='o', markersize=4, markeredgecolor='black', markeredgewidth=0.8)
+        else:
+            ax.plot(x, point_values, color=class_color_map[point_class], alpha=0.8, linewidth=1, zorder=2)
     
     # Set the x-axis ticks and labels
     ax.set_xticks(x)
@@ -773,6 +782,12 @@ def visualize_single_hyperblock(df, features, class_col, hyperblock, hb_index, t
     correct_points = hyperblock.num_cases - hyperblock.num_misclassified
     ax.set_title(f"Hyperblock {hb_index+1}/{total_hbs}: Class {hyperblock.dominant_class}\n"
                 f"Contains {hyperblock.num_cases} points ({correct_points} correct, {hyperblock.num_misclassified} misclassified)")
+    
+    # Add a legend for misclassified points if any exist
+    if hyperblock.num_misclassified > 0:
+        ax.plot([], [], color='#FF0000', linewidth=3.0, marker='o', markersize=4,
+              markeredgecolor='black', markeredgewidth=0.8, label='Misclassified')
+        ax.legend()
     
     ax.grid(True, linestyle='--', alpha=0.7)
     plt.tight_layout()
@@ -899,7 +914,7 @@ def create_hyperblock_bounds_collage(df, features, class_col, hyperblocks, outpu
 def visualize_hyperblocks_with_bounds(df, features, class_col, hyperblocks, output_dir):
     """
     Create a collage showing each hyperblock with:
-    1. The points IN the hyperblock drawn in GREEN
+    1. The points IN the hyperblock with correctly classified in their class colors and misclassified in RED
     2. A RED line for the upper bound
     3. A BLUE line for the lower bound
     """
@@ -910,6 +925,11 @@ def visualize_hyperblocks_with_bounds(df, features, class_col, hyperblocks, outp
     
     # Create figure
     plt.figure(figsize=(15, 10))
+    
+    # Get unique classes for color mapping
+    unique_classes = df[class_col].unique()
+    colors = plt.cm.tab10(np.linspace(0, 1, len(unique_classes)))
+    class_color_map = dict(zip(unique_classes, colors))
     
     for i, hb in enumerate(hyperblocks):
         # Create subplot
@@ -922,26 +942,50 @@ def visualize_hyperblocks_with_bounds(df, features, class_col, hyperblocks, outp
         upper_bounds = [hb.max_bounds[f] for f in features]
         lower_bounds = [hb.min_bounds[f] for f in features]
         
-        # 1. Draw points that are IN THIS HYPERBLOCK in green
+        # Draw points that are IN THIS HYPERBLOCK with correctly classified in their class colors and misclassified in red
+        misclassified_count = 0
         for point in hb.points:
             values = point[:-1]  # All except class
-            plt.plot(x, values, color='green', alpha=0.7, linewidth=1)
+            point_class = point[-1]
+            
+            # Determine if point is misclassified
+            is_misclassified = point_class != hb.dominant_class
+            
+            if is_misclassified:
+                plt.plot(x, values, color='#FF0000', alpha=1.0, linewidth=3.0, zorder=3, 
+                        marker='o', markersize=4, markeredgecolor='black', markeredgewidth=0.8)
+                misclassified_count += 1
+            else:
+                plt.plot(x, values, color=class_color_map[point_class], alpha=0.7, linewidth=1, zorder=2)
         
         # 2. Draw RED line for UPPER bound - thick and prominent
-        plt.plot(x, upper_bounds, 'r-', linewidth=3, label='Upper Bound')
+        plt.plot(x, upper_bounds, 'r-', linewidth=3, label='Upper Bound', zorder=1)
         
         # 3. Draw BLUE line for LOWER bound - thick and prominent
-        plt.plot(x, lower_bounds, 'b-', linewidth=3, label='Lower Bound')
+        plt.plot(x, lower_bounds, 'b-', linewidth=3, label='Lower Bound', zorder=1)
         
         # Title and formatting
-        plt.title(f"HB #{i+1}: Class {hb.dominant_class}\n{hb.num_cases} points")
+        correct_points = hb.num_cases - hb.num_misclassified
+        plt.title(f"HB #{i+1}: Class {hb.dominant_class}\n"
+                 f"{hb.num_cases} points ({correct_points} correct, {hb.num_misclassified} misclassified)")
         plt.xticks(x, features, rotation=90)
         plt.ylim(0, 1)
         plt.grid(True, alpha=0.3)
         
-        # Add legend to first plot
-        if i == 0:
-            plt.legend()
+        # Create custom legend
+        legend_elements = [
+            Line2D([0], [0], color='blue', lw=3, label='Lower Bound'),
+            Line2D([0], [0], color='red', lw=3, label='Upper Bound')
+        ]
+        
+        # Add misclassified entry to legend if there are any
+        if misclassified_count > 0:
+            legend_elements.append(Line2D([0], [0], color='#FF0000', lw=3.0, marker='o', markersize=4,
+                                         markeredgecolor='black', markeredgewidth=0.8,
+                                         label=f'Misclassified ({misclassified_count})'))
+        
+        # Add legend to each plot
+        plt.legend(handles=legend_elements, loc='best')
     
     plt.tight_layout()
     plt.savefig(os.path.join(output_dir, 'hyperblock_bounds.png'), dpi=300)
@@ -1155,6 +1199,119 @@ def incremental_hyperblock_generation(df, features, class_col, rows_per_iteratio
     iteration = 1
     previous_hyperblocks = None
     
+    # Save statistics for initial iteration before the while loop
+    percentage = current_size / total_rows * 100
+    if DEBUG:
+        print(f"\n{'='*80}")
+        print(f"Initial Iteration {iteration}/{iterations}: Processing {current_size} rows ({percentage:.1f}% of the dataset)")
+        print(f"{'='*80}")
+    
+    # Generate hyperblocks for initial dataset
+    hyperblocks = imhyper_algorithm(df.loc[current_indices], class_col, purity_threshold=0.9999, impurity_threshold=0.0001)
+    
+    # Sort hyperblocks by size (larger ones first) for more stable color assignment
+    hyperblocks.sort(key=lambda hb: hb.num_cases, reverse=True)
+    
+    # Assign colors based on similarity to previous hyperblocks
+    hb_colors = []
+    for hb in hyperblocks:
+        color_idx, centroid = find_best_color_match(hb)
+        hb_colors.append(color_idx)
+        # Add this hyperblock to our history
+        all_previous_hbs.append((centroid, hb.dominant_class, color_idx))
+    
+    # Get statistics
+    stats = get_hyperblock_statistics(hyperblocks, current_size)
+    stats['iteration'] = iteration
+    stats['rows_processed'] = current_size
+    stats['percentage_of_total'] = percentage
+    stats['misclassifications'] = "N/A"  # Default for first iteration
+    stats_records.append(stats)
+    
+    # Create proper, safe filename for saving the figure with unique identifiers
+    filename = f"{run_id}_iter_{iteration:02d}_rows_{current_size}.png"
+    save_path = os.path.join(run_dir, filename)
+    
+    # Visualization for initial iteration
+    fig, ax = plt.subplots(figsize=(14, 8))
+    x = list(range(len(features)))
+    
+    # Get unique classes for color mapping (for data points)
+    unique_classes = df[class_col].unique()
+    class_colors = plt.cm.tab10(np.linspace(0, 1, len(unique_classes)))
+    class_color_map = dict(zip(unique_classes, class_colors))
+    
+    # Plot the data points first - still using class colors for the data points
+    for idx in current_indices:
+        row = df.loc[idx]
+        point_values = [row[feat] for feat in features]
+        point_class = row[class_col]
+        ax.plot(x, point_values, color=class_color_map[point_class], alpha=0.3, linewidth=0.8)
+    
+    # Create legend entries for hyperblocks only
+    hyperblock_legend_entries = []
+    
+    # Plot each hyperblock using our assigned colors
+    for i, hb in enumerate(hyperblocks):
+        block_color = color_palette[hb_colors[i]]
+        
+        # Create legend entry with more detail
+        legend_entry = Line2D([0], [0], color=block_color, lw=4, 
+                              label=f"HB {i+1}: Class {hb.dominant_class}, {hb.num_cases} points")
+        hyperblock_legend_entries.append(legend_entry)
+        
+        # Plot the hyperblock bounds as a shaded region
+        for j in range(len(features)-1):
+            # Get min and max values for current and next feature
+            y1_min = hb.min_bounds[features[j]]
+            y1_max = hb.max_bounds[features[j]]
+            y2_min = hb.min_bounds[features[j+1]]
+            y2_max = hb.max_bounds[features[j+1]]
+            
+            # Create polygon vertices for the shaded region
+            xs = [x[j], x[j], x[j+1], x[j+1]]
+            ys = [y1_min, y1_max, y2_max, y2_min]
+            
+            # Plot the polygon
+            ax.fill(xs, ys, alpha=0.2, color=block_color, edgecolor=block_color, linewidth=1)
+    
+    # Add only the hyperblock legend - positioned to the right of the plot
+    ax.legend(handles=hyperblock_legend_entries, title="Hyperblocks", 
+             loc='center left', bbox_to_anchor=(1.05, 0.5), borderaxespad=0.)
+    
+    ax.set_xticks(x)
+    ax.set_xticklabels(features, rotation=45)
+    ax.set_ylim(0, 1)
+    
+    # Calculate coverage
+    covered_count, coverage_percentage, _ = calculate_dataset_coverage(df.loc[current_indices], hyperblocks)
+    ax.set_title(f"IMHyper: Data with Hyperblock Visualization (Iteration {iteration}: {current_size}/{total_rows} rows)\n"
+                f"Dataset Coverage: {covered_count}/{len(current_indices)} points ({coverage_percentage:.2f}%)")
+    ax.grid(True, linestyle='--', alpha=0.7)
+    
+    plt.tight_layout()
+    plt.subplots_adjust(right=0.75)  # Still need space for the hyperblock legend
+    
+    try:
+        plt.savefig(save_path, dpi=300, bbox_inches='tight')
+        if DEBUG:
+            print(f"Figure saved to: {save_path}")
+    except Exception as e:
+        if DEBUG:
+            print(f"Error saving figure: {e}")
+        # Try saving with an even simpler filename as fallback
+        fallback_path = os.path.join(run_dir, f"{run_id}_iter_{iteration}.png")
+        plt.savefig(fallback_path, dpi=300, bbox_inches='tight')
+        if DEBUG:
+            print(f"Saved to fallback path: {fallback_path}")
+    
+    plt.close()
+    
+    # Save the current hyperblocks for next iteration
+    previous_hyperblocks = hyperblocks
+    iteration += 1
+    
+    # Continue with additional iterations
     while current_size <= total_rows:
         percentage = current_size / total_rows * 100
         if DEBUG:
@@ -1163,7 +1320,7 @@ def incremental_hyperblock_generation(df, features, class_col, rows_per_iteratio
             print(f"{'='*80}")
         
         # Generate hyperblocks using the current subset
-        hyperblocks = imhyper_algorithm(current_df, class_col, purity_threshold=0.9999, impurity_threshold=0.0001)
+        hyperblocks = imhyper_algorithm(df.loc[current_indices], class_col, purity_threshold=0.9999, impurity_threshold=0.0001)
         
         # Sort hyperblocks by size (larger ones first) for more stable color assignment
         hyperblocks.sort(key=lambda hb: hb.num_cases, reverse=True)
@@ -1186,6 +1343,9 @@ def incremental_hyperblock_generation(df, features, class_col, rows_per_iteratio
         next_size = min(current_size + rows_per_iteration, total_rows)
         misclassified_str = "N/A"  # Default for first iteration
         
+        # Track misclassified points for visualization
+        misclassified_indices = []
+        
         if iteration > 1 and previous_hyperblocks:
             # Get the points that were just added in this iteration
             if current_size <= len(remaining_indices) + initial_subset_size:
@@ -1202,11 +1362,12 @@ def incremental_hyperblock_generation(df, features, class_col, rows_per_iteratio
                 
                 # Count how many were misclassified by previous hyperblocks
                 misclassified = 0
-                for _, row in added_points.iterrows():
+                for idx, row in added_points.iterrows():
                     true_class = row[class_col]
                     predicted_class = classify_with_hyperblocks(row[features].values, previous_hyperblocks, features)
                     if predicted_class != true_class:
                         misclassified += 1
+                        misclassified_indices.append(idx)  # Store for visualization
                 
                 # Format as "X/Y" as requested
                 added_count = len(added_points)
@@ -1281,10 +1442,32 @@ def incremental_hyperblock_generation(df, features, class_col, rows_per_iteratio
         ax.set_ylim(0, 1)
         
         # Calculate coverage
-        covered_count, coverage_percentage, _ = calculate_dataset_coverage(current_df, hyperblocks)
+        covered_count, coverage_percentage, _ = calculate_dataset_coverage(df.loc[current_indices], hyperblocks)
         ax.set_title(f"IMHyper: Data with Hyperblock Visualization (Iteration {iteration}: {current_size}/{total_rows} rows)\n"
-                    f"Dataset Coverage: {covered_count}/{len(current_df)} points ({coverage_percentage:.2f}%)")
+                    f"Dataset Coverage: {covered_count}/{len(current_indices)} points ({coverage_percentage:.2f}%)")
         ax.grid(True, linestyle='--', alpha=0.7)
+        
+        # Draw misclassified points from the summary table
+        if misclassified_indices:
+            for idx in misclassified_indices:
+                if idx in current_indices:  # Make sure the point is in the current dataset
+                    row = df.loc[idx]
+                    point_values = [row[feat] for feat in features]
+                    ax.plot(x, point_values, color='#FF0000', alpha=1.0, linewidth=3.5, zorder=200, 
+                           marker='o', markersize=5, markeredgecolor='black', markeredgewidth=1.0)
+            
+            # Add misclassified legend entry
+            misclassified_legend = Line2D([0], [0], color='#FF0000', linewidth=3.5, marker='o', 
+                                         markersize=5, markeredgecolor='black', markeredgewidth=1.0,
+                                         label=f'Misclassified ({len(misclassified_indices)})')
+            
+            # Add to legend
+            handles, labels = ax.get_legend().legend_handles, ax.get_legend().get_texts()
+            handles.append(misclassified_legend)
+            labels = [label.get_text() for label in labels]
+            labels.append(misclassified_legend.get_label())
+            ax.legend(handles=handles, labels=labels, title="Hyperblocks", 
+                     loc='center left', bbox_to_anchor=(1.05, 0.5), borderaxespad=0.)
         
         plt.tight_layout()
         plt.subplots_adjust(right=0.75)  # Still need space for the hyperblock legend
@@ -1311,18 +1494,37 @@ def incremental_hyperblock_generation(df, features, class_col, rows_per_iteratio
         if next_size > current_size and len(current_indices) < total_rows:
             # Calculate how many indices to add
             indices_to_add = next_size - current_size
-            # Get next batch of indices from remaining_indices
-            if current_size - initial_subset_size + indices_to_add <= len(remaining_indices):
+            # Calculate start position in remaining_indices
+            start_pos = current_size - initial_subset_size
+            
+            # Check how many indices we have available
+            available_indices = len(remaining_indices) - start_pos
+            
+            if available_indices > 0:
+                # Use as many indices as available, up to the desired amount
+                actual_indices_to_add = min(indices_to_add, available_indices)
+                
                 next_batch_indices = remaining_indices[
-                    current_size - initial_subset_size:
-                    current_size - initial_subset_size + indices_to_add
+                    start_pos:
+                    start_pos + actual_indices_to_add
                 ]
                 current_indices.extend(next_batch_indices)
                 current_df = df.loc[current_indices].copy()
                 current_size = len(current_indices)
                 iteration += 1
+                
+                if DEBUG:
+                    print(f"Added {actual_indices_to_add} indices, now at {current_size}/{total_rows} rows")
+                    
+                # Check if we've used all available indices
+                if start_pos + actual_indices_to_add >= len(remaining_indices):
+                    if DEBUG:
+                        print("Used all available indices, final iteration will be next")
             else:
-                # We've used all available indices
+                # No more indices available but we haven't reached total_rows
+                # This should only happen if there are duplicate indices
+                if DEBUG:
+                    print(f"No more indices available. Used {len(current_indices)}/{total_rows} rows.")
                 break
         else:
             break
@@ -1560,6 +1762,119 @@ def decremental_hyperblock_generation(df, features, class_col, rows_per_iteratio
     iteration = 1
     previous_hyperblocks = None
     
+    # Save statistics for initial iteration before the while loop
+    percentage = current_size / total_rows * 100
+    if DEBUG:
+        print(f"\n{'='*80}")
+        print(f"Initial Iteration {iteration}/{iterations}: Processing {current_size} rows ({percentage:.1f}% of the dataset)")
+        print(f"{'='*80}")
+    
+    # Generate hyperblocks for initial dataset
+    hyperblocks = imhyper_algorithm(df.loc[current_indices], class_col, purity_threshold=0.9999, impurity_threshold=0.0001)
+    
+    # Sort hyperblocks by size (larger ones first) for more stable color assignment
+    hyperblocks.sort(key=lambda hb: hb.num_cases, reverse=True)
+    
+    # Assign colors based on similarity to previous hyperblocks
+    hb_colors = []
+    for hb in hyperblocks:
+        color_idx, centroid = find_best_color_match(hb)
+        hb_colors.append(color_idx)
+        # Add this hyperblock to our history
+        all_previous_hbs.append((centroid, hb.dominant_class, color_idx))
+    
+    # Get statistics
+    stats = get_hyperblock_statistics(hyperblocks, current_size)
+    stats['iteration'] = iteration
+    stats['rows_processed'] = current_size
+    stats['percentage_of_total'] = percentage
+    stats['misclassifications'] = "N/A"  # Default for first iteration
+    stats_records.append(stats)
+    
+    # Create proper, safe filename for saving the figure with unique identifiers
+    filename = f"{run_id}_iter_{iteration:02d}_rows_{current_size}.png"
+    save_path = os.path.join(run_dir, filename)
+    
+    # Visualization for initial iteration
+    fig, ax = plt.subplots(figsize=(14, 8))
+    x = list(range(len(features)))
+    
+    # Get unique classes for color mapping (for data points)
+    unique_classes = df[class_col].unique()
+    class_colors = plt.cm.tab10(np.linspace(0, 1, len(unique_classes)))
+    class_color_map = dict(zip(unique_classes, class_colors))
+    
+    # Plot the data points first - still using class colors for the data points
+    for idx in current_indices:
+        row = df.loc[idx]
+        point_values = [row[feat] for feat in features]
+        point_class = row[class_col]
+        ax.plot(x, point_values, color=class_color_map[point_class], alpha=0.3, linewidth=0.8)
+    
+    # Create legend entries for hyperblocks only
+    hyperblock_legend_entries = []
+    
+    # Plot each hyperblock using our assigned colors
+    for i, hb in enumerate(hyperblocks):
+        block_color = color_palette[hb_colors[i]]
+        
+        # Create legend entry with more detail
+        legend_entry = Line2D([0], [0], color=block_color, lw=4, 
+                              label=f"HB {i+1}: Class {hb.dominant_class}, {hb.num_cases} points")
+        hyperblock_legend_entries.append(legend_entry)
+        
+        # Plot the hyperblock bounds as a shaded region
+        for j in range(len(features)-1):
+            # Get min and max values for current and next feature
+            y1_min = hb.min_bounds[features[j]]
+            y1_max = hb.max_bounds[features[j]]
+            y2_min = hb.min_bounds[features[j+1]]
+            y2_max = hb.max_bounds[features[j+1]]
+            
+            # Create polygon vertices for the shaded region
+            xs = [x[j], x[j], x[j+1], x[j+1]]
+            ys = [y1_min, y1_max, y2_max, y2_min]
+            
+            # Plot the polygon
+            ax.fill(xs, ys, alpha=0.2, color=block_color, edgecolor=block_color, linewidth=1)
+    
+    # Add only the hyperblock legend - positioned to the right of the plot
+    ax.legend(handles=hyperblock_legend_entries, title="Hyperblocks", 
+             loc='center left', bbox_to_anchor=(1.05, 0.5), borderaxespad=0.)
+    
+    ax.set_xticks(x)
+    ax.set_xticklabels(features, rotation=45)
+    ax.set_ylim(0, 1)
+    
+    # Calculate coverage
+    covered_count, coverage_percentage, _ = calculate_dataset_coverage(df.loc[current_indices], hyperblocks)
+    ax.set_title(f"IMHyper: Data with Hyperblock Visualization (Iteration {iteration}: {current_size}/{total_rows} rows)\n"
+                f"Dataset Coverage: {covered_count}/{len(current_indices)} points ({coverage_percentage:.2f}%)")
+    ax.grid(True, linestyle='--', alpha=0.7)
+    
+    plt.tight_layout()
+    plt.subplots_adjust(right=0.75)  # Still need space for the hyperblock legend
+    
+    try:
+        plt.savefig(save_path, dpi=300, bbox_inches='tight')
+        if DEBUG:
+            print(f"Figure saved to: {save_path}")
+    except Exception as e:
+        if DEBUG:
+            print(f"Error saving figure: {e}")
+        # Try saving with an even simpler filename as fallback
+        fallback_path = os.path.join(run_dir, f"{run_id}_iter_{iteration}.png")
+        plt.savefig(fallback_path, dpi=300, bbox_inches='tight')
+        if DEBUG:
+            print(f"Saved to fallback path: {fallback_path}")
+    
+    plt.close()
+    
+    # Save the current hyperblocks for next iteration
+    previous_hyperblocks = hyperblocks
+    iteration += 1
+    
+    # Continue with additional iterations
     while current_size > min_samples_needed:  # Changed condition to ensure we have enough samples
         percentage = current_size / total_rows * 100
         if DEBUG:
@@ -1591,6 +1906,9 @@ def decremental_hyperblock_generation(df, features, class_col, rows_per_iteratio
         next_size = current_size - rows_per_iteration
         misclassified_str = "N/A"  # Default for first iteration
         
+        # Track misclassified points for visualization
+        misclassified_indices = []
+        
         if iteration > 1 and previous_hyperblocks:
             # Get the points that will be removed in the next iteration
             removed_indices = current_indices[-rows_per_iteration:]
@@ -1598,11 +1916,12 @@ def decremental_hyperblock_generation(df, features, class_col, rows_per_iteratio
             
             # Count how many would be misclassified by current hyperblocks
             misclassified = 0
-            for _, row in removed_points.iterrows():
+            for idx, row in removed_points.iterrows():
                 true_class = row[class_col]
                 predicted_class = classify_with_hyperblocks(row[features].values, hyperblocks, features)
                 if predicted_class != true_class:
                     misclassified += 1
+                    misclassified_indices.append(idx)  # Store for visualization
             
             # Format as "X/Y" as requested
             removed_count = len(removed_points)
@@ -1680,6 +1999,28 @@ def decremental_hyperblock_generation(df, features, class_col, rows_per_iteratio
                     f"Dataset Coverage: {covered_count}/{len(current_indices)} points ({coverage_percentage:.2f}%)")
         ax.grid(True, linestyle='--', alpha=0.7)
         
+        # Draw misclassified points from the summary table
+        if misclassified_indices:
+            for idx in misclassified_indices:
+                if idx in current_indices:  # Make sure the point is in the current dataset
+                    row = df.loc[idx]
+                    point_values = [row[feat] for feat in features]
+                    ax.plot(x, point_values, color='#FF0000', alpha=1.0, linewidth=3.5, zorder=200, 
+                           marker='o', markersize=5, markeredgecolor='black', markeredgewidth=1.0)
+            
+            # Add misclassified legend entry
+            misclassified_legend = Line2D([0], [0], color='#FF0000', linewidth=3.5, marker='o', 
+                                         markersize=5, markeredgecolor='black', markeredgewidth=1.0,
+                                         label=f'Misclassified ({len(misclassified_indices)})')
+            
+            # Add to legend
+            handles, labels = ax.get_legend().legend_handles, ax.get_legend().get_texts()
+            handles.append(misclassified_legend)
+            labels = [label.get_text() for label in labels]
+            labels.append(misclassified_legend.get_label())
+            ax.legend(handles=handles, labels=labels, title="Hyperblocks", 
+                     loc='center left', bbox_to_anchor=(1.05, 0.5), borderaxespad=0.)
+        
         plt.tight_layout()
         plt.subplots_adjust(right=0.75)  # Still need space for the hyperblock legend
         
@@ -1703,12 +2044,26 @@ def decremental_hyperblock_generation(df, features, class_col, rows_per_iteratio
         
         # Remove data for next iteration
         if next_size > min_samples_needed:  # Only remove if we'll still have enough samples
-            # Randomly select indices to remove
-            indices_to_remove = np.random.choice(current_indices, size=rows_per_iteration, replace=False)
-            # Remove the selected indices
-            current_indices = [idx for idx in current_indices if idx not in indices_to_remove]
-            current_size = len(current_indices)
-            iteration += 1
+            # Calculate how many rows we can actually remove
+            max_to_remove = current_size - min_samples_needed
+            actual_rows_to_remove = min(rows_per_iteration, max_to_remove)
+            
+            if actual_rows_to_remove > 0:
+                # Randomly select indices to remove
+                indices_to_remove = np.random.choice(current_indices, size=actual_rows_to_remove, replace=False)
+                # Remove the selected indices
+                current_indices = [idx for idx in current_indices if idx not in indices_to_remove]
+                current_size = len(current_indices)
+                iteration += 1
+                
+                if DEBUG:
+                    print(f"Removed {actual_rows_to_remove} rows, now at {current_size}/{total_rows} rows")
+                    if current_size <= min_samples_needed:
+                        print(f"Reached minimum required samples ({min_samples_needed}), this was the final iteration")
+            else:
+                if DEBUG:
+                    print(f"Cannot remove more rows without going below minimum required ({min_samples_needed})")
+                break
         else:
             if DEBUG:
                 print(f"\nStopping at {current_size} samples (minimum required: {min_samples_needed})")
@@ -1844,6 +2199,11 @@ def create_hyperblock_collage(df, features, class_col):
     # Create a figure for the collage
     plt.figure(figsize=(6*cols, 5*rows))
     
+    # Get unique classes for color mapping
+    unique_classes = df[class_col].unique()
+    colors = plt.cm.tab10(np.linspace(0, 1, len(unique_classes)))
+    class_color_map = dict(zip(unique_classes, colors))
+    
     # Create and add individual hyperblock plots
     for i, hb in enumerate(hyperblocks):
         # Create subplot
@@ -1855,19 +2215,42 @@ def create_hyperblock_collage(df, features, class_col):
             plt.plot(features, values, color='lightgray', alpha=0.2, linewidth=0.5)
         
         # Highlight points in this hyperblock
+        misclassified_count = 0
         for point in hb.points:
             # Get feature values (all except last which is class)
             values = point[:-1]
             # Get class
             point_class = point[-1]
-            # Plot with color based on class
-            plt.plot(features, values, 
-                    color='green' if point_class == hb.dominant_class else 'red',
-                    alpha=0.7, linewidth=1)
+            
+            # Determine if this point is misclassified
+            is_misclassified = point_class != hb.dominant_class
+            
+            # Plot with original class colors for correctly classified points, prominent bright red for misclassified
+            if is_misclassified:
+                plt.plot(features, values, color='#FF0000', alpha=1.0, linewidth=3.0, zorder=3, 
+                        marker='o', markersize=4, markeredgecolor='black', markeredgewidth=0.8)
+                misclassified_count += 1
+            else:
+                plt.plot(features, values, color=class_color_map[point_class], alpha=0.7, linewidth=1, zorder=2)
         
         # Set title with hyperblock info
         accuracy = (hb.num_cases - hb.num_misclassified) / hb.num_cases * 100
         plt.title(f"HB #{i+1}: Class {hb.dominant_class}\n{hb.num_cases} points, {accuracy:.1f}% accuracy")
+        
+        # Create custom legend for classes
+        class_legend_elements = []
+        classes_in_hb = set(point[-1] for point in hb.points)
+        for cls in classes_in_hb:
+            class_legend_elements.append(Line2D([0], [0], color=class_color_map[cls], lw=1, 
+                                               label=f"Class {cls}"))
+        
+        # Add misclassified entry to legend if any exist
+        if misclassified_count > 0:
+            class_legend_elements.append(Line2D([0], [0], color='#FF0000', lw=3.0, marker='o', markersize=4,
+                                               markeredgecolor='black', markeredgewidth=0.8,
+                                               label=f'Misclassified ({misclassified_count})'))
+            
+        plt.legend(handles=class_legend_elements, loc='best')
         
         # Adjust formatting
         plt.xticks(rotation=45)
@@ -1882,6 +2265,41 @@ def create_hyperblock_collage(df, features, class_col):
     
     if DEBUG:
         print(f"Hyperblock collage saved to: {collage_path}")
+
+def mark_misclassified_points_in_hyperblocks(df, features, class_col, hyperblocks, ax, x):
+    """
+    Helper function to mark misclassified points in hyperblocks with prominent red polylines.
+    
+    Args:
+        df: DataFrame containing the data
+        features: List of feature names
+        class_col: Name of the class column
+        hyperblocks: List of Hyperblock objects
+        ax: Matplotlib axis to plot on
+        x: List of x coordinates for features
+    """
+    # Count misclassified points 
+    total_misclassified = 0
+    
+    # Plot misclassified points in bright red with thicker polylines for high visibility
+    for hb in hyperblocks:
+        for point in hb.points:
+            point_values = point[:-1]  # All except class
+            point_class = point[-1]
+            
+            # Check if point is misclassified
+            if point_class != hb.dominant_class:
+                # Draw misclassified points with MUCH more prominent bright red polylines
+                ax.plot(x, point_values, color='#FF0000', alpha=1.0, linewidth=3.0, zorder=100, 
+                       marker='o', markersize=4, markeredgecolor='black', markeredgewidth=0.8)
+                total_misclassified += 1
+                
+    # Add misclassified to legend if any exist
+    if total_misclassified > 0:
+        return Line2D([0], [0], color='#FF0000', linewidth=3.0, marker='o', markersize=4,
+                     markeredgecolor='black', markeredgewidth=0.8,
+                     label=f'Misclassified ({total_misclassified})')
+    return None
 
 if __name__ == "__main__":
     main()
