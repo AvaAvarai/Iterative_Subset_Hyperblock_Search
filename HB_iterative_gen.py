@@ -1033,7 +1033,7 @@ def classify_with_hyperblocks(point, hyperblocks, features):
             
     return predicted_class
 
-def incremental_hyperblock_generation(df, features, class_col, rows_per_iteration):
+def incremental_hyperblock_generation(df, features, class_col, rows_per_iteration, initial_subset_fraction=0.25):
     """
     Incrementally generate hyperblocks by gradually adding data.
     
@@ -1042,6 +1042,7 @@ def incremental_hyperblock_generation(df, features, class_col, rows_per_iteratio
         features: List of feature names
         class_col: Name of the class column
         rows_per_iteration: Number of rows to add in each iteration
+        initial_subset_fraction: Fraction of data to use as initial subset (default: 0.25)
     """
     # Create output directory for images
     output_dir = 'hyperblock_progression'
@@ -1069,8 +1070,11 @@ def incremental_hyperblock_generation(df, features, class_col, rows_per_iteratio
     # Get total dataset size
     total_rows = len(df)
     
-    # Initial subset: take exactly 1/3 of the data as a completely random sample
-    initial_subset_size = total_rows // 3
+    # Initial subset based on user-specified fraction
+    initial_subset_size = int(total_rows * initial_subset_fraction)
+    
+    if DEBUG:
+        print(f"Using initial subset fraction of {initial_subset_fraction} ({initial_subset_size}/{total_rows} rows)")
     
     # Create a fresh copy of the DataFrame and shuffle it completely
     shuffled_indices = np.random.permutation(df.index)
@@ -2157,6 +2161,26 @@ def main():
     
     choice = input("Enter your choice (1 or 2): ")
     
+    # Ask for the initial subset fraction
+    initial_subset_fraction = 0.25  # Default value
+    while True:
+        try:
+            user_input = input("\nEnter initial subset fraction (default: 0.25, e.g., 0.1 for 10%, 0.5 for 50% of data): ")
+            if not user_input:  # User pressed Enter without typing
+                break  # Use default value
+            
+            fraction = float(user_input)
+            if fraction <= 0 or fraction >= 1:
+                print("Please enter a value between 0 and 1.")
+                continue
+            
+            initial_subset_fraction = fraction
+            break
+        except ValueError:
+            print("Please enter a valid number.")
+    
+    print(f"Using initial subset fraction: {initial_subset_fraction} ({int(len(df) * initial_subset_fraction)}/{len(df)} rows)")
+    
     if choice == "1":
         # Get the number of rows to add/remove per iteration from the user
         while True:
@@ -2175,7 +2199,7 @@ def main():
         # Run the incremental analysis
         if DEBUG:
             print("\nRunning Incremental Hyperblock Generation...")
-        incremental_dir = incremental_hyperblock_generation(df, features, class_col, rows_per_iteration)
+        incremental_dir = incremental_hyperblock_generation(df, features, class_col, rows_per_iteration, initial_subset_fraction)
         if DEBUG:
             print(f"Incremental analysis results saved to: {incremental_dir}")
         
@@ -2218,7 +2242,7 @@ def main():
         
         # Run the multiple seed experiment
         print(f"\nRunning multiple seed experiment with {num_seeds} seeds...")
-        output_dir = run_multiple_seed_experiment(df, features, class_col, rows_per_iteration, num_seeds)
+        output_dir = run_multiple_seed_experiment(df, features, class_col, rows_per_iteration, num_seeds, initial_subset_fraction)
         print(f"Multiple seed experiment results saved to: {output_dir}")
     
     else:
@@ -2347,7 +2371,7 @@ def mark_misclassified_points_in_hyperblocks(df, features, class_col, hyperblock
                      label=f'Misclassified ({total_misclassified})')
     return None
 
-def run_multiple_seed_experiment(df, features, class_col, rows_per_iteration, num_seeds=1000):
+def run_multiple_seed_experiment(df, features, class_col, rows_per_iteration, num_seeds=1000, initial_subset_fraction=0.25):
     """
     Run the incremental and decremental hyperblock generation experiments with multiple random seeds
     and create a visualization of misclassification distributions.
@@ -2358,6 +2382,7 @@ def run_multiple_seed_experiment(df, features, class_col, rows_per_iteration, nu
         class_col: Name of the class column
         rows_per_iteration: Number of rows to add/remove per iteration
         num_seeds: Number of different random seeds to use (default: 1000)
+        initial_subset_fraction: Fraction of data to use as initial subset (default: 0.25)
     """
     # Create output directory for results
     output_dir = 'multiple_seed_experiment'
@@ -2374,6 +2399,7 @@ def run_multiple_seed_experiment(df, features, class_col, rows_per_iteration, nu
     if DEBUG:
         print(f"\n{'='*80}")
         print(f"Starting Multiple Seed Experiment with {num_seeds} seeds")
+        print(f"Using initial subset fraction of {initial_subset_fraction}")
         print(f"Output directory: {run_dir}")
         print(f"{'='*80}")
     
@@ -2383,7 +2409,7 @@ def run_multiple_seed_experiment(df, features, class_col, rows_per_iteration, nu
     
     # Calculate total dataset size and expected number of iterations
     total_rows = len(df)
-    initial_subset_size = total_rows // 3
+    initial_subset_size = int(total_rows * initial_subset_fraction)
     remaining_rows = total_rows - initial_subset_size
     incremental_iterations = (remaining_rows + rows_per_iteration - 1) // rows_per_iteration + 1
     
